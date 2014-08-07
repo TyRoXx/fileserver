@@ -18,9 +18,11 @@ namespace
 		return boost::make_iterator_range(part.begin, part.end);
 	}
 
+	template <class MakeSender>
 	void serve_client(
-		rx::yield_context<response_part> &yield,
-		rx::observable<rx::received_from_socket> &receive)
+		rx::yield_context<rx::nothing> &yield,
+		rx::observable<rx::received_from_socket> &receive,
+		MakeSender const &make_sender)
 	{
 		auto receive_sync = rx::make_observable_source(rx::ref(receive), yield);
 		rx::received_from_socket_source receive_bytes(receive_sync);
@@ -29,23 +31,39 @@ namespace
 		{
 			return;
 		}
-		std::cerr << header->path << '\n';
-
-		Si::http::response_header response;
-		response.http_version = "HTTP/1.0";
-		response.status_text = "OK";
-		response.status = 200;
-		response.arguments["Content-Length"] = "5";
-		response.arguments["Connection"] = "close";
-
-		std::string response_header;
-		auto header_sink = Si::make_container_sink(response_header);
-		Si::http::write_header(header_sink, response);
-
-		yield(rx::incoming_bytes(response_header.data(), response_header.data() + response_header.size()));
 
 		std::string body = "Hello";
-		yield(rx::incoming_bytes(body.data(), body.data() + body.size()));
+
+		{
+			Si::http::response_header response;
+			response.http_version = "HTTP/1.0";
+			response.status_text = "OK";
+			response.status = 200;
+			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(body.size());
+			response.arguments["Connection"] = "close";
+
+			std::string response_header;
+			auto header_sink = Si::make_container_sink(response_header);
+			Si::http::write_header(header_sink, response);
+
+			auto send_header = make_sender(rx::incoming_bytes(response_header.data(), response_header.data() + response_header.size()));
+			auto error = yield.get_one(send_header);
+			assert(error);
+			if (*error)
+			{
+				return;
+			}
+		}
+
+		{
+			auto send_body = make_sender(rx::incoming_bytes(body.data(), body.data() + body.size()));
+			auto error = yield.get_one(send_body);
+			assert(error);
+			if (*error)
+			{
+				return;
+			}
+		}
 
 		while (Si::get(receive_bytes))
 		{
@@ -68,25 +86,11 @@ namespace
 			{
 				std::array<char, 1024> receive_buffer;
 				rx::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-				auto response_parts = rx::make_coroutine<response_part>([&received](rx::yield_context<response_part> &yield)
+				auto make_sender = [socket](rx::incoming_bytes sent)
 				{
-					return serve_client(yield, received);
-				});
-				for (;;)
-				{
-					auto part = yield.get_one(response_parts);
-					if (!part)
-					{
-						break;
-					}
-					rx::sending_observable sending(*socket, to_range(*part));
-					auto error = yield.get_one(sending);
-					assert(error);
-					if (*error)
-					{
-						break;
-					}
-				}
+					return rx::sending_observable(*socket, to_range(sent));
+				};
+				serve_client(yield, received, make_sender);
 			};
 			return rx::wrap<rx::nothing>(rx::make_coroutine<rx::nothing>(prepare_socket));
 		}
