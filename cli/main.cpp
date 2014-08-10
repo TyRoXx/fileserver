@@ -72,29 +72,6 @@ namespace
 
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
-
-	struct accept_handler : boost::static_visitor<session_handle>
-	{
-		session_handle operator()(boost::system::error_code) const
-		{
-			throw std::logic_error("to do");
-		}
-
-		session_handle operator()(std::shared_ptr<boost::asio::ip::tcp::socket> socket) const
-		{
-			auto prepare_socket = [socket](Si::yield_context<Si::nothing> &yield)
-			{
-				std::array<char, 1024> receive_buffer;
-				Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-				auto make_sender = [socket](Si::incoming_bytes sent)
-				{
-					return Si::sending_observable(*socket, to_range(sent));
-				};
-				serve_client(yield, received, make_sender);
-			};
-			return Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket));
-		}
-	};
 }
 
 int main()
@@ -112,7 +89,27 @@ int main()
 			{
 				return;
 			}
-			auto session = Si::apply_visitor(accept_handler{}, *accepted);
+			auto session = Si::visit<session_handle>(
+				*accepted,
+				[](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+				{
+					auto prepare_socket = [socket](Si::yield_context<Si::nothing> &yield)
+					{
+						std::array<char, 1024> receive_buffer;
+						Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
+						auto make_sender = [socket](Si::incoming_bytes sent)
+						{
+							return Si::sending_observable(*socket, to_range(sent));
+						};
+						serve_client(yield, received, make_sender);
+					};
+					return Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket));
+				},
+				[](boost::system::error_code) -> session_handle
+				{
+					throw std::logic_error("to do");
+				}
+			);
 			assert(!session.empty());
 			yield(std::move(session));
 		}
