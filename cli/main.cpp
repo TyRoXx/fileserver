@@ -89,9 +89,9 @@ int main()
 			{
 				return;
 			}
-			auto session = Si::visit<session_handle>(
+			Si::visit<void>(
 				*accepted,
-				[](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+				[&yield](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
 				{
 					auto prepare_socket = [socket](Si::yield_context<Si::nothing> &yield)
 					{
@@ -103,15 +103,13 @@ int main()
 						};
 						serve_client(yield, received, make_sender);
 					};
-					return Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket));
+					yield(Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket)));
 				},
-				[](boost::system::error_code) -> session_handle
+				[](boost::system::error_code)
 				{
 					throw std::logic_error("to do");
 				}
 			);
-			assert(!session.empty());
-			yield(std::move(session));
 		}
 	});
 	auto all_sessions_finished = Si::flatten<boost::interprocess::null_mutex>(std::move(accept_all));
