@@ -18,11 +18,12 @@ namespace
 		return boost::make_iterator_range(part.begin, part.end);
 	}
 
-	template <class MakeSender>
+	template <class MakeSender, class Shutdown>
 	void serve_client(
 		Si::yield_context<Si::nothing> &yield,
 		Si::observable<Si::received_from_socket> &receive,
-		MakeSender const &make_sender)
+		MakeSender const &make_sender,
+		Shutdown const &shutdown)
 	{
 		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
 		Si::received_from_socket_source receive_bytes(receive_sync);
@@ -32,7 +33,15 @@ namespace
 			return;
 		}
 
-		std::string body = "Hello at " + header->path;
+		std::string const body = "Hello at " + header->path;
+
+		auto const try_send = [&yield, &make_sender](std::string const &data)
+		{
+			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
+			auto error = yield.get_one(sender);
+			assert(error);
+			return !*error;
+		};
 
 		{
 			Si::http::response_header response;
@@ -46,24 +55,18 @@ namespace
 			auto header_sink = Si::make_container_sink(response_header);
 			Si::http::write_header(header_sink, response);
 
-			auto send_header = make_sender(Si::incoming_bytes(response_header.data(), response_header.data() + response_header.size()));
-			auto error = yield.get_one(send_header);
-			assert(error);
-			if (*error)
+			if (!try_send(response_header))
 			{
 				return;
 			}
 		}
 
+		if (!try_send(body))
 		{
-			auto send_body = make_sender(Si::incoming_bytes(body.data(), body.data() + body.size()));
-			auto error = yield.get_one(send_body);
-			assert(error);
-			if (*error)
-			{
-				return;
-			}
+			return;
 		}
+
+		shutdown();
 
 		while (Si::get(receive_bytes))
 		{
@@ -101,7 +104,11 @@ int main()
 						{
 							return Si::sending_observable(*socket, to_range(sent));
 						};
-						serve_client(yield, received, make_sender);
+						auto shutdown = [socket]()
+						{
+							socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+						};
+						serve_client(yield, received, make_sender, shutdown);
 					};
 					yield(Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket)));
 				},
