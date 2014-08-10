@@ -37,10 +37,8 @@ endif()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 find_package(Silicium REQUIRED)
-find_package(Reactive REQUIRED)
 
 include_directories(${SILICIUM_INCLUDE_DIR})
-include_directories(${REACTIVE_INCLUDE_DIR})
 
 include_directories(".")
 add_subdirectory("fileserver")

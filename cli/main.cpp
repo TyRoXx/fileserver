@@ -1,17 +1,17 @@
-#include <reactive/tcp_acceptor.hpp>
-#include <reactive/coroutine.hpp>
-#include <reactive/total_consumer.hpp>
-#include <reactive/flatten.hpp>
-#include <reactive/socket_observable.hpp>
-#include <reactive/sending_observable.hpp>
-#include <reactive/received_from_socket_source.hpp>
-#include <reactive/observable_source.hpp>
+#include <silicium/tcp_acceptor.hpp>
+#include <silicium/coroutine.hpp>
+#include <silicium/total_consumer.hpp>
+#include <silicium/flatten.hpp>
+#include <silicium/socket_observable.hpp>
+#include <silicium/sending_observable.hpp>
+#include <silicium/received_from_socket_source.hpp>
+#include <silicium/observable_source.hpp>
 #include <silicium/http/http.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 
 namespace
 {
-	using response_part = rx::incoming_bytes;
+	using response_part = Si::incoming_bytes;
 
 	boost::iterator_range<char const *> to_range(response_part part)
 	{
@@ -20,19 +20,19 @@ namespace
 
 	template <class MakeSender>
 	void serve_client(
-		rx::yield_context<rx::nothing> &yield,
-		rx::observable<rx::received_from_socket> &receive,
+		Si::yield_context<Si::nothing> &yield,
+		Si::observable<Si::received_from_socket> &receive,
 		MakeSender const &make_sender)
 	{
-		auto receive_sync = rx::make_observable_source(rx::ref(receive), yield);
-		rx::received_from_socket_source receive_bytes(receive_sync);
+		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
+		Si::received_from_socket_source receive_bytes(receive_sync);
 		auto header = Si::http::parse_header(receive_bytes);
 		if (!header)
 		{
 			return;
 		}
 
-		std::string body = "Hello";
+		std::string body = "Hello at " + header->path;
 
 		{
 			Si::http::response_header response;
@@ -46,7 +46,7 @@ namespace
 			auto header_sink = Si::make_container_sink(response_header);
 			Si::http::write_header(header_sink, response);
 
-			auto send_header = make_sender(rx::incoming_bytes(response_header.data(), response_header.data() + response_header.size()));
+			auto send_header = make_sender(Si::incoming_bytes(response_header.data(), response_header.data() + response_header.size()));
 			auto error = yield.get_one(send_header);
 			assert(error);
 			if (*error)
@@ -56,7 +56,7 @@ namespace
 		}
 
 		{
-			auto send_body = make_sender(rx::incoming_bytes(body.data(), body.data() + body.size()));
+			auto send_body = make_sender(Si::incoming_bytes(body.data(), body.data() + body.size()));
 			auto error = yield.get_one(send_body);
 			assert(error);
 			if (*error)
@@ -71,7 +71,7 @@ namespace
 	}
 
 	//TODO: use unique_observable
-	using session_handle = rx::shared_observable<rx::nothing>;
+	using session_handle = Si::shared_observable<Si::nothing>;
 
 	struct accept_handler : boost::static_visitor<session_handle>
 	{
@@ -82,17 +82,17 @@ namespace
 
 		session_handle operator()(std::shared_ptr<boost::asio::ip::tcp::socket> socket) const
 		{
-			auto prepare_socket = [socket](rx::yield_context<rx::nothing> &yield)
+			auto prepare_socket = [socket](Si::yield_context<Si::nothing> &yield)
 			{
 				std::array<char, 1024> receive_buffer;
-				rx::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-				auto make_sender = [socket](rx::incoming_bytes sent)
+				Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
+				auto make_sender = [socket](Si::incoming_bytes sent)
 				{
-					return rx::sending_observable(*socket, to_range(sent));
+					return Si::sending_observable(*socket, to_range(sent));
 				};
 				serve_client(yield, received, make_sender);
 			};
-			return rx::wrap<rx::nothing>(rx::make_coroutine<rx::nothing>(prepare_socket));
+			return Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket));
 		}
 	};
 }
@@ -101,9 +101,9 @@ int main()
 {
 	boost::asio::io_service io;
 	boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
-	rx::tcp_acceptor clients(acceptor);
+	Si::tcp_acceptor clients(acceptor);
 
-	auto accept_all = rx::make_coroutine<session_handle>([&clients](rx::yield_context<session_handle> &yield)
+	auto accept_all = Si::make_coroutine<session_handle>([&clients](Si::yield_context<session_handle> &yield)
 	{
 		for (;;)
 		{
@@ -117,8 +117,8 @@ int main()
 			yield(std::move(session));
 		}
 	});
-	auto all_sessions_finished = rx::flatten<boost::interprocess::null_mutex>(std::move(accept_all));
-	auto done = rx::make_total_consumer(std::move(all_sessions_finished));
+	auto all_sessions_finished = Si::flatten<boost::interprocess::null_mutex>(std::move(accept_all));
+	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 	done.start();
 	io.run();
 }
