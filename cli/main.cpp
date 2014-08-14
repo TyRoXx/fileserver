@@ -109,10 +109,10 @@ namespace
 		return std::move(request);
 	}
 
-	template <class MakeSender, class Shutdown>
+	template <class ReceiveObservable, class MakeSender, class Shutdown>
 	void serve_client(
 		Si::yield_context<Si::nothing> &yield,
-		Si::observable<Si::received_from_socket> &receive,
+		ReceiveObservable &receive,
 		MakeSender const &make_sender,
 		Shutdown const &shutdown)
 	{
@@ -209,7 +209,7 @@ int main()
 						};
 						serve_client(yield, received, make_sender, shutdown);
 					};
-					yield(Si::wrap<Si::nothing>(Si::make_coroutine<Si::nothing>(prepare_socket)));
+					yield(Si::erase_shared(Si::make_coroutine<Si::nothing>(prepare_socket)));
 				},
 				[](boost::system::error_code)
 				{
