@@ -82,7 +82,7 @@ namespace
 				break;
 			}
 			begin = next + 1;
-			unsigned char const digit = (*first * 16) + *second;
+			unsigned char const digit = static_cast<unsigned char>((*first * 16) + *second);
 			*bytes = digit;
 			++bytes;
 		}
@@ -131,7 +131,6 @@ namespace
 			return;
 		}
 
-		auto const &request_ = *request;
 		std::string const body = "Hello at " + header->path;
 
 		auto const try_send = [&yield, &make_sender](std::string const &data)
