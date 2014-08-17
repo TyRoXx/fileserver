@@ -36,6 +36,27 @@ namespace
 		digest requested_file;
 	};
 
+	static char const lower_case_hex[] = "0123456789abcdef";
+
+	template <class OutputIterator>
+	OutputIterator encode_ascii_hex_digit(byte value, OutputIterator destination, char const *digits = &lower_case_hex[0])
+	{
+		*destination++ = digits[(value >> 4) & 0x0f];
+		*destination++ = digits[(value     ) & 0x0f];
+		return destination;
+	}
+
+	template <class InputIterator, class OutputIterator>
+	std::pair<InputIterator, OutputIterator> encode_ascii_hex_digits(InputIterator begin, InputIterator end, OutputIterator destination, char const *digits = &lower_case_hex[0])
+	{
+		for (; begin != end; ++begin)
+		{
+			byte const value = *begin;
+			destination = encode_ascii_hex_digit(value, destination, digits);
+		}
+		return std::make_pair(std::move(begin), std::move(destination));
+	}
+
 	Si::optional<unsigned char> decode_ascii_hex_digit(char digit)
 	{
 		switch (digit)
@@ -357,7 +378,10 @@ int main()
 
 	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [](std::pair<digest, location> const &entry)
 	{
-		std::cerr
+		auto &out = std::cerr;
+		encode_ascii_hex_digits(entry.first.begin(), entry.first.end(), std::ostreambuf_iterator<char>(out));
+		out
+			<< " "
 			<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
 			{
 				return location.where->string();
