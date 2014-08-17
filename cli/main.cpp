@@ -12,6 +12,7 @@
 #include <silicium/http/http.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
+#include <silicium/linux/file_descriptor.hpp>
 #include <fileserver/sha256.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/container/string.hpp>
@@ -240,9 +241,62 @@ namespace
 
 	namespace detail
 	{
+		using file_read_result = Si::fast_variant<std::size_t, boost::system::error_code>;
+
+		auto make_file_source(int file, boost::iterator_range<char *> buffer)
+		{
+			return Si::make_generator_source<file_read_result>([file, buffer]() -> boost::optional<file_read_result>
+			{
+				ssize_t const read_bytes = ::read(file, buffer.begin(), buffer.size());
+				if (read_bytes == 0)
+				{
+					//end of file
+					return boost::none;
+				}
+				if (read_bytes < 0)
+				{
+					return file_read_result{boost::system::error_code(errno, boost::system::system_category())};
+				}
+				return file_read_result{static_cast<std::size_t>(read_bytes)};
+			});
+		}
+
+		Si::linux::file_descriptor open_reading(boost::filesystem::path const &name)
+		{
+			int const fd = ::open(name.c_str(), O_RDONLY);
+			if (fd < 0)
+			{
+				boost::throw_exception(boost::system::system_error(boost::system::error_code(errno, boost::system::system_category())));
+			}
+			return Si::linux::file_descriptor(fd);
+		}
+
 		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
 		{
-			return std::make_pair(digest(), location{file_system_location{Si::to_unique(file)}}); //TODO
+			auto opened = open_reading(file);
+			std::array<char, 8192> buffer;
+			auto content = make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
+				content,
+				[&buffer](file_read_result piece)
+			{
+				return Si::visit<boost::iterator_range<char const *>>(
+					piece,
+					[&buffer](std::size_t length) -> boost::iterator_range<char const *>
+					{
+						assert(length <= buffer.size());
+						return boost::make_iterator_range(buffer.data(), buffer.data() + length);
+					},
+					[](boost::system::error_code error) -> boost::iterator_range<char const *>
+					{
+						boost::throw_exception(boost::system::system_error(error));
+						SILICIUM_UNREACHABLE();
+					});
+			});
+			auto sha256_digest = fileserver::sha256(hashable_content | Si::buffered(1));
+			digest resulting_digest;
+			resulting_digest.assign(sha256_digest.bytes.begin(), sha256_digest.bytes.end());
+			return std::make_pair(resulting_digest, location{file_system_location{Si::to_unique(file)}});
 		}
 	}
 

@@ -12,9 +12,9 @@ namespace fileserver
 	};
 
 	template <class RangeOfByteArrayViews>
-	sha256_digest sha256(RangeOfByteArrayViews const &content)
+	sha256_digest sha256(RangeOfByteArrayViews &&content)
 	{
-		SHA256_CTX state{};
+		SHA256_CTX state;
 		SHA256_Init(&state);
 		for (auto const &byte_array_view : content)
 		{
