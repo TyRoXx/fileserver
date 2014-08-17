@@ -6,11 +6,14 @@
 #include <silicium/sending_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/observable_source.hpp>
+#include <silicium/for_each.hpp>
 #include <silicium/optional.hpp>
 #include <silicium/http/http.hpp>
+#include <silicium/thread.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/container/string.hpp>
 #include <boost/unordered_map.hpp>
+#include <boost/filesystem/operations.hpp>
 
 namespace
 {
@@ -199,6 +202,38 @@ namespace
 
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
+
+	namespace detail
+	{
+		void list_files_recursively(Si::yield_context_2<boost::filesystem::path> &yield, boost::filesystem::path const &root)
+		{
+			for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
+			{
+				switch (i->status().type())
+				{
+				case boost::filesystem::file_type::regular_file:
+					yield.push_result(i->path());
+					break;
+
+				case boost::filesystem::file_type::directory_file:
+					list_files_recursively(yield, i->path());
+					break;
+
+				default:
+					//ignore
+					break;
+				}
+			}
+		}
+	}
+
+	Si::unique_observable<boost::filesystem::path> list_files_recursively(boost::filesystem::path const &root)
+	{
+		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::boost_threading>([root](Si::yield_context_2<boost::filesystem::path> &yield)
+		{
+			return detail::list_files_recursively(yield, root);
+		}));
+	}
 }
 
 int main()
@@ -248,5 +283,12 @@ int main()
 	auto all_sessions_finished = Si::flatten<boost::interprocess::null_mutex>(std::move(accept_all));
 	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 	done.start();
+
+	auto listed = Si::for_each(list_files_recursively(boost::filesystem::current_path()), [](boost::filesystem::path const &file)
+	{
+		std::cerr << file << '\n';
+	});
+	listed.start();
+
 	io.run();
 }
