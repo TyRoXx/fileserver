@@ -9,7 +9,8 @@
 #include <silicium/optional.hpp>
 #include <silicium/http/http.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
-#include <boost/container/vector.hpp>
+#include <boost/container/string.hpp>
+#include <boost/unordered_map.hpp>
 
 namespace
 {
@@ -20,14 +21,12 @@ namespace
 		return boost::make_iterator_range(part.begin, part.end);
 	}
 
+	using byte = boost::uint8_t;
+	using digest = boost::container::basic_string<byte>;
+
 	struct content_request
 	{
-#ifdef _MSC_VER
-		std::vector
-#else
-		boost::container::vector
-#endif
-			<unsigned char> digest;
+		digest requested_file;
 	};
 
 	Si::optional<unsigned char> decode_ascii_hex_digit(char digit)
@@ -101,7 +100,7 @@ namespace
 			++digest_begin;
 		}
 		content_request request;
-		auto const rest = decode_ascii_hex_bytes(digest_begin, path.end(), std::back_inserter(request.digest));
+		auto const rest = decode_ascii_hex_bytes(digest_begin, path.end(), std::back_inserter(request.requested_file));
 		if (rest.first != path.end())
 		{
 			return Si::none;
@@ -109,12 +108,32 @@ namespace
 		return std::move(request);
 	}
 
+	struct file_system_location
+	{
+		//unique_ptr for noexcept-movability
+		std::unique_ptr<boost::filesystem::path> where;
+	};
+
+	using location = Si::fast_variant<file_system_location>;
+
+	struct file_repository
+	{
+		boost::unordered_map<digest, location> available;
+
+		location const *find_location(digest const &key) const
+		{
+			auto i = available.find(key);
+			return (i == end(available)) ? nullptr : &i->second;
+		}
+	};
+
 	template <class ReceiveObservable, class MakeSender, class Shutdown>
 	void serve_client(
 		Si::yield_context<Si::nothing> &yield,
 		ReceiveObservable &receive,
 		MakeSender const &make_sender,
-		Shutdown const &shutdown)
+		Shutdown const &shutdown,
+		file_repository const &repository)
 	{
 		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
 		Si::received_from_socket_source receive_bytes(receive_sync);
@@ -129,6 +148,13 @@ namespace
 		{
 			//TODO: 404 or sth
 			return;
+		}
+
+		location const * const found_file = repository.find_location(request->requested_file);
+		if (!found_file)
+		{
+			//TODO: 404
+			//return;
 		}
 
 		std::string const body = "Hello at " + header->path;
@@ -181,7 +207,9 @@ int main()
 	boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
 	Si::tcp_acceptor clients(acceptor);
 
-	auto accept_all = Si::make_coroutine<session_handle>([&clients](Si::yield_context<session_handle> &yield)
+	file_repository files;
+
+	auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::yield_context<session_handle> &yield)
 	{
 		for (;;)
 		{
@@ -192,9 +220,9 @@ int main()
 			}
 			Si::visit<void>(
 				*accepted,
-				[&yield](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+				[&yield, &files](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
 				{
-					auto prepare_socket = [socket](Si::yield_context<Si::nothing> &yield)
+					auto prepare_socket = [socket, &files](Si::yield_context<Si::nothing> &yield)
 					{
 						std::array<char, 1024> receive_buffer;
 						Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
@@ -206,7 +234,7 @@ int main()
 						{
 							socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 						};
-						serve_client(yield, received, make_sender, shutdown);
+						serve_client(yield, received, make_sender, shutdown, files);
 					};
 					yield(Si::erase_shared(Si::make_coroutine<Si::nothing>(prepare_socket)));
 				},
