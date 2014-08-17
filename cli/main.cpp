@@ -5,11 +5,14 @@
 #include <silicium/socket_observable.hpp>
 #include <silicium/sending_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
+#include <silicium/transform_if_initialized.hpp>
 #include <silicium/observable_source.hpp>
 #include <silicium/for_each.hpp>
 #include <silicium/optional.hpp>
 #include <silicium/http/http.hpp>
+#include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
+#include <fileserver/sha256.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/container/string.hpp>
 #include <boost/unordered_map.hpp>
@@ -234,6 +237,20 @@ namespace
 			return detail::list_files_recursively(yield, root);
 		}));
 	}
+
+	namespace detail
+	{
+		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
+		{
+			return std::make_pair(digest(), location{file_system_location{Si::to_unique(file)}}); //TODO
+		}
+	}
+
+	template <class PathObservable>
+	Si::unique_observable<std::pair<digest, location>> get_locations_by_hash(PathObservable &&paths)
+	{
+		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file));
+	}
 }
 
 int main()
@@ -284,9 +301,14 @@ int main()
 	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 	done.start();
 
-	auto listed = Si::for_each(list_files_recursively(boost::filesystem::current_path()), [](boost::filesystem::path const &file)
+	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [](std::pair<digest, location> const &entry)
 	{
-		std::cerr << file << '\n';
+		std::cerr
+			<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
+			{
+				return location.where->string();
+			})
+			<< '\n';
 	});
 	listed.start();
 
