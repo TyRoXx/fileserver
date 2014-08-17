@@ -13,6 +13,7 @@
 #include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
 #include <silicium/linux/file_descriptor.hpp>
+#include <silicium/read_file.hpp>
 #include <fileserver/sha256.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/container/string.hpp>
@@ -138,8 +139,8 @@ namespace
 
 	struct file_system_location
 	{
-		//unique_ptr for noexcept-movability
-		std::unique_ptr<boost::filesystem::path> where;
+		//shared_ptr for noexcept-movability and copyability
+		std::shared_ptr<boost::filesystem::path> where;
 	};
 
 	using location = Si::fast_variant<file_system_location>;
@@ -182,12 +183,15 @@ namespace
 		if (!found_file)
 		{
 			//TODO: 404
-			//return;
+			return;
 		}
 
-		std::string const body = "Hello at " + header->path;
+		std::vector<char> const body = Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
+		{
+			return *location.where;
+		}));
 
-		auto const try_send = [&yield, &make_sender](std::string const &data)
+		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
 			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
 			auto error = yield.get_one(sender);
@@ -203,7 +207,7 @@ namespace
 			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(body.size());
 			response.arguments["Connection"] = "close";
 
-			std::string response_header;
+			std::vector<char> response_header;
 			auto header_sink = Si::make_container_sink(response_header);
 			Si::http::write_header(header_sink, response);
 
@@ -317,7 +321,7 @@ namespace
 			auto sha256_digest = fileserver::sha256(hashable_content | Si::buffered(1));
 			digest resulting_digest;
 			resulting_digest.assign(sha256_digest.bytes.begin(), sha256_digest.bytes.end());
-			return std::make_pair(resulting_digest, location{file_system_location{Si::to_unique(file)}});
+			return std::make_pair(resulting_digest, location{file_system_location{std::make_shared<boost::filesystem::path>(file)}});
 		}
 	}
 
@@ -376,7 +380,7 @@ int main()
 	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 	done.start();
 
-	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [](std::pair<digest, location> const &entry)
+	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [&files, &io](std::pair<digest, location> const &entry)
 	{
 		auto &out = std::cerr;
 		encode_ascii_hex_digits(entry.first.begin(), entry.first.end(), std::ostreambuf_iterator<char>(out));
@@ -387,6 +391,11 @@ int main()
 				return location.where->string();
 			})
 			<< '\n';
+
+		io.post([entry, &files]()
+		{
+			files.available.insert(entry);
+		});
 	});
 	listed.start();
 
