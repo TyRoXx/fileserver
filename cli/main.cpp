@@ -318,7 +318,7 @@ namespace
 						SILICIUM_UNREACHABLE();
 					});
 			});
-			auto sha256_digest = fileserver::sha256(hashable_content | Si::buffered(1));
+			auto sha256_digest = fileserver::sha256(hashable_content);
 			digest resulting_digest;
 			resulting_digest.assign(sha256_digest.bytes.begin(), sha256_digest.bytes.end());
 			return std::make_pair(resulting_digest, location{file_system_location{std::make_shared<boost::filesystem::path>(file)}});
