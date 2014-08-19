@@ -8,12 +8,12 @@
 namespace fileserver
 {
 	template <std::size_t ByteSize>
-	struct digest
+	struct fixed_digest
 	{
 		std::array<unsigned char, ByteSize> bytes;
 	};
 
-	using sha256_digest = digest<256 / 8>;
+	using sha256_digest = fixed_digest<256 / 8>;
 
 	template <class BytesViewSource>
 	sha256_digest sha256(BytesViewSource &&content)
