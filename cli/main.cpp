@@ -191,7 +191,7 @@ namespace fileserver
 		{
 			auto opened = Si::linux::open_reading(file);
 			std::array<char, 8192> buffer;
-			auto content = Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto content = Si::make_file_source(opened.value().handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
 				content,
 				[&buffer](Si::file_read_result piece)
