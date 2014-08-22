@@ -68,6 +68,14 @@ namespace fileserver
 
 	using location = Si::fast_variant<file_system_location>;
 
+	boost::uint64_t location_file_size(location const &location)
+	{
+		return Si::visit<boost::uint64_t>(location, [](file_system_location const &file)
+		{
+			return file.size;
+		});
+	}
+
 	struct file_repository
 	{
 		boost::unordered_map<digest, location> available;
@@ -109,11 +117,6 @@ namespace fileserver
 			return;
 		}
 
-		std::vector<char> const body = Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
-		{
-			return *location.where;
-		}));
-
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
 			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
@@ -127,7 +130,7 @@ namespace fileserver
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
 			response.status = 200;
-			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(body.size());
+			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(location_file_size(*found_file));
 			response.arguments["Connection"] = "close";
 
 			std::vector<char> response_header;
@@ -138,6 +141,16 @@ namespace fileserver
 			{
 				return;
 			}
+		}
+
+		std::vector<char> const body = Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
+		{
+			return *location.where;
+		}));
+
+		if (body.size() != location_file_size(*found_file))
+		{
+			return;
 		}
 
 		if (!try_send(body))
