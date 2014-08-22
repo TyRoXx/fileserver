@@ -21,6 +21,7 @@
 #include <boost/container/string.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <sys/stat.h>
 
 namespace fileserver
 {
@@ -62,6 +63,7 @@ namespace fileserver
 	{
 		//shared_ptr for noexcept-movability and copyability
 		std::shared_ptr<boost::filesystem::path> where;
+		boost::uint64_t size;
 	};
 
 	using location = Si::fast_variant<file_system_location>;
@@ -187,11 +189,22 @@ namespace fileserver
 
 	namespace detail
 	{
+		Si::error_or<boost::uint64_t> file_size(int file)
+		{
+			struct stat buffer;
+			if (fstat(file, &buffer) < 0)
+			{
+				return boost::system::error_code(errno, boost::system::system_category());
+			}
+			return static_cast<boost::uint64_t>(buffer.st_size);
+		}
+
 		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
 		{
-			auto opened = Si::linux::open_reading(file);
+			auto opened = Si::linux::open_reading(file).get();
+			auto const size = file_size(opened.handle).get();
 			std::array<char, 8192> buffer;
-			auto content = Si::make_file_source(opened.get().handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto content = Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
 				content,
 				[&buffer](Si::file_read_result piece)
@@ -212,7 +225,7 @@ namespace fileserver
 			auto sha256_digest = fileserver::sha256(hashable_content);
 			digest resulting_digest;
 			resulting_digest.assign(sha256_digest.bytes.begin(), sha256_digest.bytes.end());
-			return std::make_pair(resulting_digest, location{file_system_location{std::make_shared<boost::filesystem::path>(file)}});
+			return std::make_pair(resulting_digest, location{file_system_location{std::make_shared<boost::filesystem::path>(file), size}});
 		}
 	}
 
