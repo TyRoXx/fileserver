@@ -9,6 +9,7 @@
 #include <silicium/observable_source.hpp>
 #include <silicium/for_each.hpp>
 #include <silicium/optional.hpp>
+#include <silicium/file_source.hpp>
 #include <silicium/http/http.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
@@ -186,44 +187,14 @@ namespace fileserver
 
 	namespace detail
 	{
-		using file_read_result = Si::fast_variant<std::size_t, boost::system::error_code>;
-
-		auto make_file_source(int file, boost::iterator_range<char *> buffer)
-		{
-			return Si::make_generator_source<file_read_result>([file, buffer]() -> boost::optional<file_read_result>
-			{
-				ssize_t const read_bytes = ::read(file, buffer.begin(), buffer.size());
-				if (read_bytes == 0)
-				{
-					//end of file
-					return boost::none;
-				}
-				if (read_bytes < 0)
-				{
-					return file_read_result{boost::system::error_code(errno, boost::system::system_category())};
-				}
-				return file_read_result{static_cast<std::size_t>(read_bytes)};
-			});
-		}
-
-		Si::linux::file_descriptor open_reading(boost::filesystem::path const &name)
-		{
-			int const fd = ::open(name.c_str(), O_RDONLY);
-			if (fd < 0)
-			{
-				boost::throw_exception(boost::system::system_error(boost::system::error_code(errno, boost::system::system_category())));
-			}
-			return Si::linux::file_descriptor(fd);
-		}
-
 		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
 		{
-			auto opened = open_reading(file);
+			auto opened = Si::linux::open_reading(file);
 			std::array<char, 8192> buffer;
-			auto content = make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto content = Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
 				content,
-				[&buffer](file_read_result piece)
+				[&buffer](Si::file_read_result piece)
 			{
 				return Si::visit<boost::iterator_range<char const *>>(
 					piece,
