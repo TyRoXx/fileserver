@@ -15,6 +15,7 @@
 #include <silicium/thread.hpp>
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
+#include <silicium/thread.hpp>
 #include <fileserver/sha256.hpp>
 #include <fileserver/hexadecimal.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
@@ -120,9 +121,9 @@ namespace fileserver
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
 			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
-			auto error = yield.get_one(sender);
-			assert(error);
-			return !*error;
+			auto result = yield.get_one(sender);
+			assert(result);
+			return !result->is_error();
 		};
 
 		{
@@ -143,17 +144,25 @@ namespace fileserver
 			}
 		}
 
-		std::vector<char> const body = Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
+		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context_2<std::vector<char>> &yield)
 		{
-			return *location.where;
-		}));
-
-		if (body.size() != location_file_size(*found_file))
+			yield.push_result(Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
+			{
+				return *location.where;
+			})));
+		});
+		boost::optional<std::vector<char>> const body = yield.get_one(reading);
+		if (!body)
 		{
 			return;
 		}
 
-		if (!try_send(body))
+		if (body->size() != location_file_size(*found_file))
+		{
+			return;
+		}
+
+		if (!try_send(*body))
 		{
 			return;
 		}
@@ -282,7 +291,8 @@ int main()
 						};
 						auto shutdown = [socket]()
 						{
-							socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+							boost::system::error_code ec; //ignored
+							socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
 						};
 						serve_client(yield, received, make_sender, shutdown, files);
 					};
@@ -295,7 +305,7 @@ int main()
 			);
 		}
 	});
-	auto all_sessions_finished = Si::flatten<boost::interprocess::null_mutex>(std::move(accept_all));
+	auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
 	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 	done.start();
 
