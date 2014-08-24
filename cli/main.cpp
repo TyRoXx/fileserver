@@ -88,36 +88,31 @@ namespace fileserver
 		}
 	};
 
-	template <class ReceiveObservable, class MakeSender, class Shutdown>
-	void serve_client(
+	Si::http::response_header make_not_found_response()
+	{
+		Si::http::response_header header;
+		header.http_version = "HTTP/1.0";
+		header.status = 404;
+		header.status_text = "Not Found";
+		header.arguments["Connection"] = "close";
+		return header;
+	}
+
+	std::vector<char> serialize_response(Si::http::response_header const &header)
+	{
+		std::vector<char> serialized;
+		auto sink = Si::make_container_sink(serialized);
+		Si::http::write_header(sink, header);
+		return serialized;
+	}
+
+	template <class MakeSender>
+	void respond(
 		Si::yield_context<Si::nothing> &yield,
-		ReceiveObservable &receive,
 		MakeSender const &make_sender,
-		Shutdown const &shutdown,
+		Si::http::request_header const &header,
 		file_repository const &repository)
 	{
-		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
-		Si::received_from_socket_source receive_bytes(receive_sync);
-		auto header = Si::http::parse_header(receive_bytes);
-		if (!header)
-		{
-			return;
-		}
-
-		auto const request = parse_request_path(header->path);
-		if (!request)
-		{
-			//TODO: 404 or sth
-			return;
-		}
-
-		location const * const found_file = repository.find_location(request->requested_file);
-		if (!found_file)
-		{
-			//TODO: 404
-			return;
-		}
-
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
 			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
@@ -125,6 +120,20 @@ namespace fileserver
 			assert(result);
 			return !result->is_error();
 		};
+
+		auto const request = parse_request_path(header.path);
+		if (!request)
+		{
+			try_send(serialize_response(make_not_found_response()));
+			return;
+		}
+
+		location const * const found_file = repository.find_location(request->requested_file);
+		if (!found_file)
+		{
+			try_send(serialize_response(make_not_found_response()));
+			return;
+		}
 
 		{
 			Si::http::response_header response;
@@ -134,10 +143,7 @@ namespace fileserver
 			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(location_file_size(*found_file));
 			response.arguments["Connection"] = "close";
 
-			std::vector<char> response_header;
-			auto header_sink = Si::make_container_sink(response_header);
-			Si::http::write_header(header_sink, response);
-
+			std::vector<char> response_header = serialize_response(response);
 			if (!try_send(response_header))
 			{
 				return;
@@ -166,7 +172,25 @@ namespace fileserver
 		{
 			return;
 		}
+	}
 
+	template <class ReceiveObservable, class MakeSender, class Shutdown>
+	void serve_client(
+		Si::yield_context<Si::nothing> &yield,
+		ReceiveObservable &receive,
+		MakeSender const &make_sender,
+		Shutdown const &shutdown,
+		file_repository const &repository)
+	{
+		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
+		Si::received_from_socket_source receive_bytes(receive_sync);
+		auto header = Si::http::parse_header(receive_bytes);
+		if (!header)
+		{
+			return;
+		}
+
+		respond(yield, make_sender, *header, repository);
 		shutdown();
 
 		while (Si::get(receive_bytes))
