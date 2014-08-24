@@ -44,6 +44,6 @@ find_package(Silicium REQUIRED)
 include_directories(${SILICIUM_INCLUDE_DIR})
 
 include_directories(".")
-add_subdirectory("fileserver")
-add_subdirectory("cli")
+add_subdirectory("server")
+add_subdirectory("server-cli")
 add_subdirectory("test")

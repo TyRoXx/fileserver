@@ -16,8 +16,8 @@
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
 #include <silicium/thread.hpp>
-#include <fileserver/sha256.hpp>
-#include <fileserver/hexadecimal.hpp>
+#include <server/sha256.hpp>
+#include <server/hexadecimal.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/container/string.hpp>
 #include <boost/unordered_map.hpp>
