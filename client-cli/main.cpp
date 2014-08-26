@@ -5,6 +5,8 @@
 #include <silicium/coroutine.hpp>
 #include <silicium/sending_observable.hpp>
 #include <silicium/socket_observable.hpp>
+#include <silicium/received_from_socket_source.hpp>
+#include <silicium/observable_source.hpp>
 #include <iostream>
 
 namespace
@@ -49,21 +51,27 @@ int main()
 			}
 		}
 
-		for (;;)
 		{
 			std::array<char, 4096> receive_buffer;
-			Si::socket_observable receiving(socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-			boost::optional<Si::received_from_socket> const received = yield.get_one(receiving);
-			if (!received)
+			auto socket_source = Si::make_observable_source(Si::socket_observable(socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield);
 			{
-				break;
+				Si::received_from_socket_source response_source(socket_source);
+				boost::optional<Si::http::response_header> const response = Si::http::parse_response_header(response_source);
+				if (!response)
+				{
+					return;
+				}
 			}
-			if (received->is_error())
+			for (;;)
 			{
-				break;
+				auto piece = Si::get(socket_source);
+				if (!piece || piece->is_error())
+				{
+					break;
+				}
+				auto const &bytes = piece->get();
+				std::cout.write(bytes.begin, std::distance(bytes.begin, bytes.end));
 			}
-			Si::incoming_bytes const &bytes = received->get();
-			std::cout.write(bytes.begin, std::distance(bytes.begin, bytes.end));
 		}
 	}));
 	connecting.start();
