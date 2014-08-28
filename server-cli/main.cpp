@@ -150,9 +150,9 @@ namespace fileserver
 			}
 		}
 
-		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context_2<std::vector<char>> &yield)
+		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context<std::vector<char>> &yield)
 		{
-			yield.push_result(Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
+			yield(Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
 			{
 				return *location.where;
 			})));
@@ -203,14 +203,14 @@ namespace fileserver
 
 	namespace detail
 	{
-		void list_files_recursively(Si::yield_context_2<boost::filesystem::path> &yield, boost::filesystem::path const &root)
+		void list_files_recursively(Si::yield_context<boost::filesystem::path> &yield, boost::filesystem::path const &root)
 		{
 			for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
 			{
 				switch (i->status().type())
 				{
 				case boost::filesystem::file_type::regular_file:
-					yield.push_result(i->path());
+					yield(i->path());
 					break;
 
 				case boost::filesystem::file_type::directory_file:
@@ -227,7 +227,7 @@ namespace fileserver
 
 	Si::unique_observable<boost::filesystem::path> list_files_recursively(boost::filesystem::path const &root)
 	{
-		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::boost_threading>([root](Si::yield_context_2<boost::filesystem::path> &yield)
+		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::boost_threading>([root](Si::yield_context<boost::filesystem::path> &yield)
 		{
 			return detail::list_files_recursively(yield, root);
 		}));
