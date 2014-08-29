@@ -41,7 +41,7 @@ int main()
 		{
 			std::vector<char> send_buffer;
 			auto send_sink = Si::make_container_sink(send_buffer);
-			Si::http::write_header(send_sink, make_get_request("localhost", "/0cf58519be5d78070b76de0549279ef7d7d29a29bd46fd3b530baf962b40430a"));
+			Si::http::write_header(send_sink, make_get_request("localhost", "/ee26f0e571a22a8e11adf7a20510870938913c16b4840bc9fd41e048fba74250"));
 			Si::sending_observable sending(socket, boost::make_iterator_range(send_buffer.data(), send_buffer.data() + send_buffer.size()));
 			boost::optional<Si::error_or<std::size_t>> const error = yield.get_one(sending);
 			assert(error);
