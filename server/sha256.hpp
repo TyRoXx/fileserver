@@ -1,6 +1,7 @@
 #ifndef FILESERVER_SHA256_HPP
 #define FILESERVER_SHA256_HPP
 
+#include <server/byte.hpp>
 #include <openssl/sha.h>
 #include <array>
 #include <silicium/source.hpp>
@@ -10,7 +11,12 @@ namespace fileserver
 	template <std::size_t ByteSize>
 	struct fixed_digest
 	{
-		std::array<unsigned char, ByteSize> bytes;
+		std::array<byte, ByteSize> bytes;
+
+		fixed_digest() BOOST_NOEXCEPT
+		{
+			bytes.fill(0);
+		}
 	};
 
 	using sha256_digest = fixed_digest<256 / 8>;

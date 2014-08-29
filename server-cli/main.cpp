@@ -35,7 +35,7 @@ namespace fileserver
 
 	struct content_request
 	{
-		digest requested_file;
+		unknown_digest requested_file;
 	};
 
 	Si::optional<content_request> parse_request_path(std::string const &path)
@@ -77,9 +77,9 @@ namespace fileserver
 
 	struct file_repository
 	{
-		boost::unordered_map<digest, location> available;
+		boost::unordered_map<unknown_digest, location> available;
 
-		location const *find_location(digest const &key) const
+		location const *find_location(unknown_digest const &key) const
 		{
 			auto i = available.find(key);
 			return (i == end(available)) ? nullptr : &i->second;
@@ -267,9 +267,7 @@ namespace fileserver
 					});
 			});
 			auto sha256_digest = fileserver::sha256(hashable_content);
-			digest resulting_digest;
-			resulting_digest.assign(sha256_digest.bytes.begin(), sha256_digest.bytes.end());
-			return std::make_pair(resulting_digest, location{file_system_location{std::make_shared<boost::filesystem::path>(file), size}});
+			return std::make_pair(digest{sha256_digest}, location{file_system_location{std::make_shared<boost::filesystem::path>(file), size}});
 		}
 	}
 
@@ -334,7 +332,8 @@ int main()
 	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [&files, &io](std::pair<digest, location> const &entry)
 	{
 		auto &out = std::cerr;
-		encode_ascii_hex_digits(entry.first.begin(), entry.first.end(), std::ostreambuf_iterator<char>(out));
+		auto const digest_bytes = fileserver::get_digest_digits(entry.first);
+		encode_ascii_hex_digits(digest_bytes.begin(), digest_bytes.end(), std::ostreambuf_iterator<char>(out));
 		out
 			<< " "
 			<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
@@ -343,9 +342,9 @@ int main()
 			})
 			<< '\n';
 
-		io.post([entry, &files]()
+		io.post([digest_bytes, entry, &files]()
 		{
-			files.available.insert(entry);
+			files.available.insert(std::make_pair(fileserver::unknown_digest(digest_bytes.begin(), digest_bytes.end()), entry.second));
 		});
 	});
 	listed.start();

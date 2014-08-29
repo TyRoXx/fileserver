@@ -78,12 +78,27 @@ namespace fileserver
 
 		boost::optional<digest> read_digest(Si::source<byte> &in)
 		{
-			auto length = Si::get(in);
-			if (!length)
+			auto type = Si::get(in);
+			if (!type)
 			{
 				return boost::none;
 			}
-			return Si::take<byte, digest>(in, *length);
+			switch (*type)
+			{
+			case 0:
+				{
+					sha256_digest value;
+					if ((value.bytes.data() + value.bytes.size()) !=
+					     in.copy_next(boost::make_iterator_range(value.bytes.data(), value.bytes.data() + value.bytes.size())))
+					{
+						return boost::none;
+					}
+					return digest{value};
+				}
+
+			default:
+				return boost::none;
+			}
 		}
 	}
 
@@ -121,14 +136,23 @@ namespace fileserver
 		}
 	}
 
+	void write_digest(Si::sink<byte> &out, digest const &value)
+	{
+		return Si::visit<void>(
+			value,
+			[&out](sha256_digest const &sha256)
+		{
+			Si::append(out, static_cast<byte>(0));
+			out.append(boost::make_iterator_range(sha256.bytes.data(), sha256.bytes.data() + sha256.bytes.size()));
+		});
+	}
+
 	void write_tree_entry(Si::sink<byte> &out, tree_entry const &entry)
 	{
 		out.append(boost::make_iterator_range(entry.name.data(), entry.name.data() + entry.name.size()));
 		Si::append(out, static_cast<byte>(0));
 		detail::write_tree_entry_type(out, entry.type);
-		assert(entry.content.size() <= std::numeric_limits<byte>::max());
-		Si::append(out, static_cast<byte>(entry.content.size()));
-		out.append(boost::make_iterator_range(entry.content.data(), entry.content.data() + entry.content.size()));
+		write_digest(out, entry.content);
 	}
 
 	namespace detail
