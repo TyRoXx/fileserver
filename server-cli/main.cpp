@@ -245,7 +245,12 @@ namespace fileserver
 
 		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
 		{
-			auto opened = Si::open_reading(file).get();
+			auto opening = Si::open_reading(file);
+			if (opening.is_error())
+			{
+				return boost::none;
+			}
+			auto opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();
 			std::array<char, 8192> buffer;
 			auto content = Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
