@@ -347,9 +347,10 @@ int main()
 			})
 			<< '\n';
 
-		io.post([digest_bytes, entry, &files]()
+		fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
+		io.post([key, entry, &files]() mutable
 		{
-			files.available.insert(std::make_pair(fileserver::unknown_digest(digest_bytes.begin(), digest_bytes.end()), entry.second));
+			files.available.insert(std::make_pair(std::move(key), std::move(entry.second)));
 		});
 	});
 	listed.start();
