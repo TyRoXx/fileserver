@@ -34,6 +34,8 @@ BOOST_AUTO_TEST_CASE(write_tree)
 	fileserver::write_tree(sink, 1, entries);
 	std::vector<fileserver::byte> const expected
 	{
+		0x01, //version
+
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, //count
 
 		'a', '.', 'b', 'i', 'n', 0x00, //name

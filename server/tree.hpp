@@ -169,8 +169,9 @@ namespace fileserver
 		}
 	}
 
-	void write_tree(Si::sink<byte> &out, boost::uint64_t entry_count, Si::source<tree_entry const *> &entries)
+	void write_tree(Si::sink<byte> &out, boost::uint64_t entry_count, Si::source<tree_entry const *> &entries, byte version = 1)
 	{
+		Si::append(out, version);
 		detail::encode_big_endian(out, entry_count);
 		for (boost::uint64_t i = 0; i < entry_count; ++i)
 		{
