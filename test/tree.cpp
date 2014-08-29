@@ -27,74 +27,77 @@ namespace fileserver
 		digest content;
 	};
 
-	template <class Element>
-	bool read_until_terminator(Si::sink<Element> &out, Si::source<Element> &in, Element const &terminator)
+	namespace detail
 	{
-		for (;;)
+		template <class Element>
+		bool read_until_terminator(Si::sink<Element> &out, Si::source<Element> &in, Element const &terminator)
 		{
-			auto element = Si::get(in);
-			if (!element)
+			for (;;)
 			{
-				return false;
+				auto element = Si::get(in);
+				if (!element)
+				{
+					return false;
+				}
+				if (*element == terminator)
+				{
+					return true;
+				}
+				Si::append(out, std::move(*element));
 			}
-			if (*element == terminator)
+		}
+
+		boost::optional<file_name> read_file_name(Si::source<byte> &in)
+		{
+			file_name result;
+			auto result_writer = Si::make_container_sink(result);
+			if (read_until_terminator(result_writer, in, static_cast<byte>(0)))
 			{
-				return true;
+				return std::move(result);
 			}
-			Si::append(out, std::move(*element));
-		}
-	}
-
-	boost::optional<file_name> read_file_name(Si::source<byte> &in)
-	{
-		file_name result;
-		auto result_writer = Si::make_container_sink(result);
-		if (read_until_terminator(result_writer, in, static_cast<byte>(0)))
-		{
-			return std::move(result);
-		}
-		return boost::none;
-	}
-
-	boost::optional<tree_entry_type> read_tree_entry_type(Si::source<byte> &in)
-	{
-		auto raw = Si::get(in);
-		if (!raw)
-		{
 			return boost::none;
 		}
-		switch (*raw)
-		{
-		case 0: return tree_entry_type::blob;
-		case 1: return tree_entry_type::tree;
-		default:
-			return boost::none;
-		}
-	}
 
-	boost::optional<digest> read_digest(Si::source<byte> &in)
-	{
-		auto length = Si::get(in);
-		if (!length)
+		boost::optional<tree_entry_type> read_tree_entry_type(Si::source<byte> &in)
 		{
-			return boost::none;
+			auto raw = Si::get(in);
+			if (!raw)
+			{
+				return boost::none;
+			}
+			switch (*raw)
+			{
+			case 0: return tree_entry_type::blob;
+			case 1: return tree_entry_type::tree;
+			default:
+				return boost::none;
+			}
 		}
-		return Si::take<byte, digest>(in, *length);
+
+		boost::optional<digest> read_digest(Si::source<byte> &in)
+		{
+			auto length = Si::get(in);
+			if (!length)
+			{
+				return boost::none;
+			}
+			return Si::take<byte, digest>(in, *length);
+		}
 	}
 
 	boost::optional<tree_entry> read_tree_entry(Si::source<byte> &in)
 	{
-		auto name = read_file_name(in);
+		auto name = detail::read_file_name(in);
 		if (!name)
 		{
 			return boost::none;
 		}
-		auto type = read_tree_entry_type(in);
+		auto type = detail::read_tree_entry_type(in);
 		if (!type)
 		{
 			return boost::none;
 		}
-		auto content = read_digest(in);
+		auto content = detail::read_digest(in);
 		if (!content)
 		{
 			return boost::none;
@@ -102,22 +105,25 @@ namespace fileserver
 		return tree_entry{std::move(*name), std::move(*type), std::move(*content)};
 	}
 
-	void write_tree_entry_type(Si::sink<byte> &out, tree_entry_type type)
+	namespace detail
 	{
-		byte value = 0;
-		switch (type)
+		void write_tree_entry_type(Si::sink<byte> &out, tree_entry_type type)
 		{
-		case tree_entry_type::blob: value = 0; break;
-		case tree_entry_type::tree: value = 1; break;
+			byte value = 0;
+			switch (type)
+			{
+			case tree_entry_type::blob: value = 0; break;
+			case tree_entry_type::tree: value = 1; break;
+			}
+			Si::append(out, value);
 		}
-		Si::append(out, value);
 	}
 
 	void write_tree_entry(Si::sink<byte> &out, tree_entry const &entry)
 	{
 		out.append(boost::make_iterator_range(entry.name.data(), entry.name.data() + entry.name.size()));
 		Si::append(out, static_cast<byte>(0));
-		write_tree_entry_type(out, entry.type);
+		detail::write_tree_entry_type(out, entry.type);
 		assert(entry.content.size() <= std::numeric_limits<byte>::max());
 		Si::append(out, static_cast<byte>(entry.content.size()));
 		out.append(boost::make_iterator_range(entry.content.data(), entry.content.data() + entry.content.size()));
