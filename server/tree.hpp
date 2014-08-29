@@ -130,6 +130,30 @@ namespace fileserver
 		Si::append(out, static_cast<byte>(entry.content.size()));
 		out.append(boost::make_iterator_range(entry.content.data(), entry.content.data() + entry.content.size()));
 	}
+
+	namespace detail
+	{
+		template <class Integer>
+		void encode_big_endian(Si::sink<byte> &out, Integer value)
+		{
+			for (std::size_t i = 0; i < sizeof(value); ++i)
+			{
+				std::size_t const bits_in_a_byte = 8;
+				byte const current_byte = static_cast<byte>(value >> ((sizeof(value) - i - 1) * bits_in_a_byte));
+				Si::append(out, current_byte);
+			}
+		}
+	}
+
+	void write_tree(Si::sink<byte> &out, boost::uint64_t entry_count, Si::source<tree_entry const *> &entries)
+	{
+		detail::encode_big_endian(out, entry_count);
+		for (boost::uint64_t i = 0; i < entry_count; ++i)
+		{
+			tree_entry const &entry = **Si::get(entries);
+			write_tree_entry(out, entry);
+		}
+	}
 }
 
 #endif
