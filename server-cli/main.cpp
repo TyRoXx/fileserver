@@ -18,8 +18,8 @@
 #include <silicium/thread.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
+#include <server/digest.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
-#include <boost/container/string.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <sys/stat.h>
@@ -32,8 +32,6 @@ namespace fileserver
 	{
 		return boost::make_iterator_range(part.begin, part.end);
 	}
-
-	using digest = boost::container::basic_string<byte>;
 
 	struct content_request
 	{
