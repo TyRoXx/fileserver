@@ -16,6 +16,7 @@
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
 #include <silicium/thread.hpp>
+#include <silicium/transforming_source.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <server/digest.hpp>
