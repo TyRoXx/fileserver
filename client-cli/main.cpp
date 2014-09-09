@@ -7,6 +7,7 @@
 #include <silicium/socket_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/observable_source.hpp>
+#include <silicium/virtualized_source.hpp>
 #include <iostream>
 
 namespace
@@ -53,7 +54,7 @@ int main()
 
 		{
 			std::array<char, 4096> receive_buffer;
-			auto socket_source = Si::make_observable_source(Si::socket_observable(socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield);
+			auto socket_source = Si::virtualize_source(Si::make_observable_source(Si::socket_observable(socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield));
 			{
 				Si::received_from_socket_source response_source(socket_source);
 				boost::optional<Si::http::response_header> const response = Si::http::parse_response_header(response_source);

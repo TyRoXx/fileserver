@@ -16,6 +16,7 @@
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
 #include <silicium/thread.hpp>
+#include <silicium/virtualized_source.hpp>
 #include <silicium/transforming_source.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
@@ -181,7 +182,7 @@ namespace fileserver
 		Shutdown const &shutdown,
 		file_repository const &repository)
 	{
-		auto receive_sync = Si::make_observable_source(Si::ref(receive), yield);
+		auto receive_sync = Si::virtualize_source(Si::make_observable_source(Si::ref(receive), yield));
 		Si::received_from_socket_source receive_bytes(receive_sync);
 		auto header = Si::http::parse_header(receive_bytes);
 		if (!header)
@@ -254,7 +255,7 @@ namespace fileserver
 			auto opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();
 			std::array<char, 8192> buffer;
-			auto content = Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size())));
 			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
 				content,
 				[&buffer](Si::file_read_result piece)
