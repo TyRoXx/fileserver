@@ -15,7 +15,7 @@
 #include <silicium/thread.hpp>
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
-#include <silicium/thread.hpp>
+#include <silicium/std_threading.hpp>
 #include <silicium/virtualized_source.hpp>
 #include <silicium/transforming_source.hpp>
 #include <server/sha256.hpp>
@@ -227,7 +227,7 @@ namespace fileserver
 
 	Si::unique_observable<boost::filesystem::path> list_files_recursively(boost::filesystem::path const &root)
 	{
-		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::boost_threading>([root](Si::yield_context<boost::filesystem::path> &yield)
+		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::std_threading>([root](Si::yield_context<boost::filesystem::path> &yield)
 		{
 			return detail::list_files_recursively(yield, root);
 		}));
