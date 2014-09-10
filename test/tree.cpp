@@ -28,7 +28,7 @@ BOOST_AUTO_TEST_CASE(write_tree)
 	std::vector<fileserver::byte> written;
 	auto sink = Si::make_container_sink(written);
 	fileserver::tree_entry const entry{fileserver::make_file_name("a.bin"), fileserver::tree_entry_type::blob, fileserver::sha256_digest{}};
-	auto entries = Si::make_generator_source<fileserver::tree_entry const *>([&entry]() -> boost::optional<fileserver::tree_entry const *>
+	auto entries = Si::make_generator_source([&entry]() -> boost::optional<fileserver::tree_entry const *>
 	{
 		return &entry;
 	});
