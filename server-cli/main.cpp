@@ -375,7 +375,18 @@ int main(int argc, char **argv)
 	positional.add("verb", 1);
 	positional.add("where", 1);
 	boost::program_options::variables_map vm;
-	boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
+	try
+	{
+		boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
+	}
+	catch (boost::program_options::error const &ex)
+	{
+		std::cerr
+			<< ex.what() << '\n'
+			<< desc << "\n";
+		return 1;
+	}
+
 	boost::program_options::notify(vm);
 
 	if (vm.count("help"))
