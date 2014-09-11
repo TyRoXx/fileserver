@@ -24,6 +24,7 @@
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <boost/program_options.hpp>
 #include <sys/stat.h>
 
 namespace fileserver
@@ -283,79 +284,116 @@ namespace fileserver
 	{
 		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file));
 	}
+
+	void serve_directory(boost::filesystem::path const &served_dir)
+	{
+		boost::asio::io_service io;
+		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
+		Si::tcp_acceptor clients(acceptor);
+
+		file_repository files;
+
+		auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::yield_context<session_handle> &yield)
+		{
+			for (;;)
+			{
+				auto accepted = yield.get_one(clients);
+				if (!accepted)
+				{
+					return;
+				}
+				Si::visit<void>(
+					*accepted,
+					[&yield, &files](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+					{
+						auto prepare_socket = [socket, &files](Si::yield_context<Si::nothing> &yield)
+						{
+							std::array<char, 1024> receive_buffer;
+							Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
+							auto make_sender = [socket](Si::incoming_bytes sent)
+							{
+								return Si::sending_observable(*socket, to_range(sent));
+							};
+							auto shutdown = [socket]()
+							{
+								boost::system::error_code ec; //ignored
+								socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+							};
+							serve_client(yield, received, make_sender, shutdown, files);
+						};
+						yield(Si::erase_shared(Si::make_coroutine<Si::nothing>(prepare_socket)));
+					},
+					[](boost::system::error_code)
+					{
+						throw std::logic_error("to do");
+					}
+				);
+			}
+		});
+		auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
+		auto done = Si::make_total_consumer(std::move(all_sessions_finished));
+		done.start();
+
+		auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(served_dir)), [&files, &io](std::pair<digest, location> const &entry)
+		{
+			auto &out = std::cerr;
+			auto const digest_bytes = fileserver::get_digest_digits(entry.first);
+			encode_ascii_hex_digits(digest_bytes.begin(), digest_bytes.end(), std::ostreambuf_iterator<char>(out));
+			out
+				<< " "
+				<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
+				{
+					return location.where->string();
+				})
+				<< '\n';
+
+			fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
+			io.post([key, entry, &files]() mutable
+			{
+				files.available.insert(std::make_pair(std::move(key), std::move(entry.second)));
+			});
+		});
+		listed.start();
+
+		io.run();
+	}
 }
 
-int main()
+int main(int argc, char **argv)
 {
-	using namespace fileserver;
+	std::string verb;
+	boost::filesystem::path where = boost::filesystem::current_path();
 
-	boost::asio::io_service io;
-	boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
-	Si::tcp_acceptor clients(acceptor);
+	boost::program_options::options_description desc("Allowed options");
+	desc.add_options()
+	    ("help", "produce help message")
+		("verb", boost::program_options::value(&verb), "what to do (serve)")
+		("where", boost::program_options::value(&where), "which filesystem directory to use")
+	;
 
-	file_repository files;
+	boost::program_options::positional_options_description positional;
+	positional.add("verb", 1);
+	positional.add("where", 1);
+	boost::program_options::variables_map vm;
+	boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
+	boost::program_options::notify(vm);
 
-	auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::yield_context<session_handle> &yield)
+	if (vm.count("help"))
 	{
-		for (;;)
-		{
-			auto accepted = yield.get_one(clients);
-			if (!accepted)
-			{
-				return;
-			}
-			Si::visit<void>(
-				*accepted,
-				[&yield, &files](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
-				{
-					auto prepare_socket = [socket, &files](Si::yield_context<Si::nothing> &yield)
-					{
-						std::array<char, 1024> receive_buffer;
-						Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-						auto make_sender = [socket](Si::incoming_bytes sent)
-						{
-							return Si::sending_observable(*socket, to_range(sent));
-						};
-						auto shutdown = [socket]()
-						{
-							boost::system::error_code ec; //ignored
-							socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-						};
-						serve_client(yield, received, make_sender, shutdown, files);
-					};
-					yield(Si::erase_shared(Si::make_coroutine<Si::nothing>(prepare_socket)));
-				},
-				[](boost::system::error_code)
-				{
-					throw std::logic_error("to do");
-				}
-			);
-		}
-	});
-	auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
-	auto done = Si::make_total_consumer(std::move(all_sessions_finished));
-	done.start();
+	    std::cerr << desc << "\n";
+	    return 1;
+	}
 
-	auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(boost::filesystem::current_path())), [&files, &io](std::pair<digest, location> const &entry)
+	if (verb == "serve")
 	{
-		auto &out = std::cerr;
-		auto const digest_bytes = fileserver::get_digest_digits(entry.first);
-		encode_ascii_hex_digits(digest_bytes.begin(), digest_bytes.end(), std::ostreambuf_iterator<char>(out));
-		out
-			<< " "
-			<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
-			{
-				return location.where->string();
-			})
-			<< '\n';
-
-		fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
-		io.post([key, entry, &files]() mutable
-		{
-			files.available.insert(std::make_pair(std::move(key), std::move(entry.second)));
-		});
-	});
-	listed.start();
-
-	io.run();
+		fileserver::serve_directory(where);
+		return 0;
+	}
+	else
+	{
+		std::cerr
+			<< "Unknown verb\n"
+			<< desc << "\n";
+	    return 1;
+	}
 }
