@@ -68,13 +68,24 @@ namespace fileserver
 		boost::uint64_t size;
 	};
 
-	using location = Si::fast_variant<file_system_location>;
+	struct in_memory_location
+	{
+		std::vector<char> content;
+	};
+
+	using location = Si::fast_variant<file_system_location, in_memory_location>;
 
 	boost::uint64_t location_file_size(location const &location)
 	{
-		return Si::visit<boost::uint64_t>(location, [](file_system_location const &file)
+		return Si::visit<boost::uint64_t>(
+			location,
+			[](file_system_location const &file)
 		{
 			return file.size;
+		},
+			[](in_memory_location const &memory)
+		{
+			return memory.content.size();
 		});
 	}
 
@@ -116,7 +127,8 @@ namespace fileserver
 	{
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
-			auto sender = make_sender(Si::incoming_bytes(data.data(), data.data() + data.size()));
+			char const * const begin = data.data();
+			auto sender = make_sender(Si::incoming_bytes(begin, begin + data.size()));
 			auto result = yield.get_one(sender);
 			assert(result);
 			return !result->is_error();
@@ -153,10 +165,17 @@ namespace fileserver
 
 		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context<std::vector<char>> &yield)
 		{
-			yield(Si::read_file(Si::visit<boost::filesystem::path>(*found_file, [](file_system_location const &location)
-			{
-				return *location.where;
-			})));
+			yield(Si::visit<std::vector<char>>(
+				*found_file,
+				[](file_system_location const &location)
+				{
+					return Si::read_file(*location.where);
+				},
+				[](in_memory_location const &location)
+				{
+					return location.content;
+				}
+			));
 		});
 		boost::optional<std::vector<char>> const body = yield.get_one(reading);
 		if (!body)
@@ -341,10 +360,16 @@ namespace fileserver
 			encode_ascii_hex_digits(digest_bytes.begin(), digest_bytes.end(), std::ostreambuf_iterator<char>(out));
 			out
 				<< " "
-				<< Si::visit<std::string>(entry.second, [](file_system_location const &location)
-				{
-					return location.where->string();
-				})
+				<< Si::visit<std::string>(
+					entry.second,
+					[](file_system_location const &location)
+					{
+						return location.where->string();
+					},
+						[](in_memory_location const &)
+					{
+						return ":memory:";
+					})
 				<< '\n';
 
 			fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
