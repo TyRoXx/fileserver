@@ -422,7 +422,7 @@ namespace fileserver
 					{
 						return location.where->string();
 					},
-						[](in_memory_location const &)
+					[](in_memory_location const &)
 					{
 						return ":memory:";
 					})
