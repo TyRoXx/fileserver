@@ -1,3 +1,4 @@
+#include <silicium/yield_context_sink.hpp>
 #include <silicium/tcp_acceptor.hpp>
 #include <silicium/coroutine.hpp>
 #include <silicium/total_consumer.hpp>
@@ -261,42 +262,11 @@ namespace fileserver
 		}
 	}
 
-	template <class Element>
-	struct yield_context_sink : Si::sink<Element>
-	{
-		explicit yield_context_sink(Si::yield_context<Element> &yield)
-			: yield(&yield)
-		{
-		}
-
-		virtual boost::iterator_range<Element *> make_append_space(std::size_t size) SILICIUM_OVERRIDE
-		{
-			boost::ignore_unused(size);
-			return {};
-		}
-
-		virtual void flush_append_space() SILICIUM_OVERRIDE
-		{
-		}
-
-		virtual void append(boost::iterator_range<Element const *> data) SILICIUM_OVERRIDE
-		{
-			for (auto const &element : data)
-			{
-				(*yield)(element);
-			}
-		}
-
-	private:
-
-		Si::yield_context<Element> *yield = nullptr;
-	};
-
 	Si::unique_observable<file_iteration_element> list_files_recursively(boost::filesystem::path const &root)
 	{
 		return Si::erase_unique(Si::make_thread<file_iteration_element, Si::std_threading>([root](Si::yield_context<file_iteration_element> &yield)
 		{
-			yield_context_sink<file_iteration_element> sink(yield);
+			Si::yield_context_sink<file_iteration_element> sink(yield);
 			return detail::list_files_recursively(sink, root);
 		}));
 	}
