@@ -30,6 +30,69 @@
 #include <boost/container/vector.hpp>
 #include <sys/stat.h>
 
+namespace Si
+{
+	struct ended
+	{
+	};
+
+	template <class Input>
+	struct end_observable : private observer<typename Input::element_type>
+	{
+		using element_type = Si::ended;
+
+		end_observable()
+		{
+		}
+
+		explicit end_observable(Input input)
+			: input(std::move(input))
+		{
+		}
+
+		void async_get_one(observer<element_type> &receiver)
+		{
+			assert(!receiver_);
+			if (has_ended)
+			{
+				return receiver.ended();
+			}
+			receiver_ = &receiver;
+			next();
+		}
+
+	private:
+
+		Input input;
+		observer<element_type> *receiver_ = nullptr;
+		bool has_ended = false;
+
+		void next()
+		{
+			assert(receiver_);
+			input.async_get_one(*this);
+		}
+
+		virtual void got_element(typename Input::element_type value) SILICIUM_OVERRIDE
+		{
+			boost::ignore_unused_variable_warning(value);
+			next();
+		}
+
+		virtual void ended() SILICIUM_OVERRIDE
+		{
+			has_ended = true;
+			Si::exchange(receiver_, nullptr)->got_element(element_type());
+		}
+	};
+
+	template <class Input>
+	auto make_end_observable(Input &&input)
+	{
+		return end_observable<typename std::decay<Input>::type>(std::forward<Input>(input));
+	}
+}
+
 namespace fileserver
 {
 	using response_part = Si::incoming_bytes;
@@ -379,7 +442,12 @@ namespace fileserver
 		auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 		done.start();
 
-		auto listed = Si::for_each(get_locations_by_hash(list_files_recursively(served_dir)), [&files, &io](std::pair<digest, location> const &entry)
+		auto listed = Si::for_each(
+			Si::make_end_observable(
+				Si::transform(
+					get_locations_by_hash(
+						list_files_recursively(served_dir)),
+						[&files, &io](std::pair<digest, location> const &entry)
 		{
 			auto &out = std::cerr;
 			auto const digest_bytes = fileserver::get_digest_digits(entry.first);
@@ -403,6 +471,11 @@ namespace fileserver
 			{
 				files.available.insert(std::make_pair(std::move(key), std::move(entry.second)));
 			});
+			return Si::nothing();
+		})),
+			[](Si::ended)
+		{
+			std::cerr << "Scan complete\n";
 		});
 		listed.start();
 
