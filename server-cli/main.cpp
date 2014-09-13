@@ -223,18 +223,19 @@ namespace fileserver
 
 	namespace detail
 	{
-		void list_files_recursively(Si::yield_context<boost::filesystem::path> &yield, boost::filesystem::path const &root)
+		template <class PathSink>
+		void list_files_recursively(PathSink &files, boost::filesystem::path const &root)
 		{
 			for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
 			{
 				switch (i->status().type())
 				{
 				case boost::filesystem::file_type::regular_file:
-					yield(i->path());
+					Si::append(files, i->path());
 					break;
 
 				case boost::filesystem::file_type::directory_file:
-					list_files_recursively(yield, i->path());
+					list_files_recursively(files, i->path());
 					break;
 
 				default:
@@ -245,11 +246,43 @@ namespace fileserver
 		}
 	}
 
+	template <class Element>
+	struct yield_context_sink : Si::sink<Element>
+	{
+		explicit yield_context_sink(Si::yield_context<Element> &yield)
+			: yield(&yield)
+		{
+		}
+
+		virtual boost::iterator_range<Element *> make_append_space(std::size_t size) SILICIUM_OVERRIDE
+		{
+			boost::ignore_unused(size);
+			return {};
+		}
+
+		virtual void flush_append_space() SILICIUM_OVERRIDE
+		{
+		}
+
+		virtual void append(boost::iterator_range<Element const *> data) SILICIUM_OVERRIDE
+		{
+			for (auto const &element : data)
+			{
+				(*yield)(element);
+			}
+		}
+
+	private:
+
+		Si::yield_context<Element> *yield = nullptr;
+	};
+
 	Si::unique_observable<boost::filesystem::path> list_files_recursively(boost::filesystem::path const &root)
 	{
 		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::std_threading>([root](Si::yield_context<boost::filesystem::path> &yield)
 		{
-			return detail::list_files_recursively(yield, root);
+			yield_context_sink<boost::filesystem::path> sink(yield);
+			return detail::list_files_recursively(sink, root);
 		}));
 	}
 
