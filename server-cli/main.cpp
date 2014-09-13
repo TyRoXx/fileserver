@@ -25,6 +25,7 @@
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/program_options.hpp>
+#include <boost/container/vector.hpp>
 #include <sys/stat.h>
 
 namespace fileserver
@@ -218,20 +219,65 @@ namespace fileserver
 		}
 	}
 
+	struct path
+	{
+		path() BOOST_NOEXCEPT
+		{
+		}
+
+		explicit path(boost::filesystem::path const &other)
+			: characters(other.string().begin(), other.string().end())
+		{
+		}
+
+		path(path const &) = default;
+		path(path &&) BOOST_NOEXCEPT = default;
+		path &operator = (path const &) = default;
+
+		path &operator = (path &&other) BOOST_NOEXCEPT
+		{
+			//for unknown reasons, noexcept = default does not work for the move-assignment operator in GCC 4.8
+			BOOST_STATIC_ASSERT(BOOST_NOEXCEPT_EXPR(characters = std::move(other.characters)));
+			characters = std::move(other.characters);
+			return *this;
+		}
+
+		boost::filesystem::path to_boost_path() const
+		{
+			return boost::filesystem::path(characters.begin(), characters.end());
+		}
+
+	private:
+
+		boost::container::vector<boost::filesystem::path::value_type> characters;
+	};
+
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
 
+	struct found_file
+	{
+		path name;
+	};
+
+	struct finished_directory
+	{
+		path name;
+	};
+
+	using file_iteration_element = Si::fast_variant<found_file, finished_directory>;
+
 	namespace detail
 	{
-		template <class PathSink>
-		void list_files_recursively(PathSink &files, boost::filesystem::path const &root)
+		template <class FileIterationElementSink>
+		void list_files_recursively(FileIterationElementSink &files, boost::filesystem::path const &root)
 		{
 			for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
 			{
 				switch (i->status().type())
 				{
 				case boost::filesystem::file_type::regular_file:
-					Si::append(files, i->path());
+					Si::append(files, file_iteration_element{found_file{path{i->path()}}});
 					break;
 
 				case boost::filesystem::file_type::directory_file:
@@ -243,6 +289,7 @@ namespace fileserver
 					break;
 				}
 			}
+			Si::append(files, file_iteration_element{finished_directory{path{root}}});
 		}
 	}
 
@@ -277,11 +324,11 @@ namespace fileserver
 		Si::yield_context<Element> *yield = nullptr;
 	};
 
-	Si::unique_observable<boost::filesystem::path> list_files_recursively(boost::filesystem::path const &root)
+	Si::unique_observable<file_iteration_element> list_files_recursively(boost::filesystem::path const &root)
 	{
-		return Si::erase_unique(Si::make_thread<boost::filesystem::path, Si::std_threading>([root](Si::yield_context<boost::filesystem::path> &yield)
+		return Si::erase_unique(Si::make_thread<file_iteration_element, Si::std_threading>([root](Si::yield_context<file_iteration_element> &yield)
 		{
-			yield_context_sink<boost::filesystem::path> sink(yield);
+			yield_context_sink<file_iteration_element> sink(yield);
 			return detail::list_files_recursively(sink, root);
 		}));
 	}
@@ -329,12 +376,20 @@ namespace fileserver
 			auto sha256_digest = fileserver::sha256(hashable_content);
 			return std::make_pair(digest{sha256_digest}, location{file_system_location{std::make_shared<boost::filesystem::path>(file), size}});
 		}
+
+		boost::optional<std::pair<digest, location>> hash_file_iteration_element(file_iteration_element const &found)
+		{
+			return Si::visit<boost::optional<std::pair<digest, location>>>(
+				found,
+				[](found_file const &file) { return hash_file(file.name.to_boost_path()); },
+				[](finished_directory const &) { return boost::none; });
+		}
 	}
 
 	template <class PathObservable>
 	Si::unique_observable<std::pair<digest, location>> get_locations_by_hash(PathObservable &&paths)
 	{
-		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file));
+		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file_iteration_element));
 	}
 
 	void serve_directory(boost::filesystem::path const &served_dir)
