@@ -67,8 +67,7 @@ namespace fileserver
 
 	struct file_system_location
 	{
-		//shared_ptr for noexcept-movability and copyability
-		std::shared_ptr<boost::filesystem::path> where;
+		path where;
 		boost::uint64_t size;
 	};
 
@@ -95,9 +94,9 @@ namespace fileserver
 
 	struct file_repository
 	{
-		boost::unordered_map<unknown_digest, location> available;
+		boost::unordered_map<unknown_digest, std::vector<location>> available;
 
-		location const *find_location(unknown_digest const &key) const
+		std::vector<location> const *find_location(unknown_digest const &key) const
 		{
 			auto i = available.find(key);
 			return (i == end(available)) ? nullptr : &i->second;
@@ -145,19 +144,23 @@ namespace fileserver
 			return;
 		}
 
-		location const * const found_file = repository.find_location(request->requested_file);
-		if (!found_file)
+		std::vector<location> const * const found_file_locations = repository.find_location(request->requested_file);
+		if (!found_file_locations)
 		{
 			try_send(serialize_response(make_not_found_response()));
 			return;
 		}
+		assert(!found_file_locations->empty());
+
+		//just try the first entry for now
+		auto &found_file = (*found_file_locations)[0];
 
 		{
 			Si::http::response_header response;
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
 			response.status = 200;
-			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(location_file_size(*found_file));
+			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(location_file_size(found_file));
 			response.arguments["Connection"] = "close";
 
 			std::vector<char> response_header = serialize_response(response);
@@ -170,10 +173,10 @@ namespace fileserver
 		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context<std::vector<char>> &yield)
 		{
 			yield(Si::visit<std::vector<char>>(
-				*found_file,
+				found_file,
 				[](file_system_location const &location)
 				{
-					return Si::read_file(*location.where);
+					return Si::read_file(location.where.to_boost_path());
 				},
 				[](in_memory_location const &location)
 				{
@@ -187,7 +190,7 @@ namespace fileserver
 			return;
 		}
 
-		if (body->size() != location_file_size(*found_file))
+		if (body->size() != location_file_size(found_file))
 		{
 			return;
 		}
@@ -313,7 +316,7 @@ namespace fileserver
 					});
 			});
 			auto sha256_digest = fileserver::sha256(hashable_content);
-			return std::make_pair(digest{sha256_digest}, location{file_system_location{std::make_shared<boost::filesystem::path>(file), size}});
+			return std::make_pair(digest{sha256_digest}, location{file_system_location{path(file), size}});
 		}
 
 		boost::optional<std::pair<digest, location>> hash_file_iteration_element(file_iteration_element const &found)
@@ -396,7 +399,7 @@ namespace fileserver
 					entry.second,
 					[](file_system_location const &location)
 					{
-						return location.where->string();
+						return location.where.to_boost_path().string();
 					},
 					[](in_memory_location const &)
 					{
@@ -407,7 +410,7 @@ namespace fileserver
 			fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
 			io.post([key, entry, &files]() mutable
 			{
-				files.available.insert(std::make_pair(std::move(key), std::move(entry.second)));
+				files.available[key].emplace_back(std::move(entry.second));
 			});
 			return Si::nothing();
 		})),
