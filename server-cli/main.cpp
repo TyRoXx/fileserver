@@ -243,53 +243,6 @@ namespace fileserver
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
 
-	struct found_file
-	{
-		path name;
-	};
-
-	struct finished_directory
-	{
-		path name;
-	};
-
-	using file_iteration_element = Si::fast_variant<found_file, finished_directory>;
-
-	namespace detail
-	{
-		template <class FileIterationElementSink>
-		void list_files_recursively(FileIterationElementSink &files, boost::filesystem::path const &root)
-		{
-			for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
-			{
-				switch (i->status().type())
-				{
-				case boost::filesystem::file_type::regular_file:
-					Si::append(files, file_iteration_element{found_file{path{i->path()}}});
-					break;
-
-				case boost::filesystem::file_type::directory_file:
-					list_files_recursively(files, i->path());
-					break;
-
-				default:
-					//ignore
-					break;
-				}
-			}
-			Si::append(files, file_iteration_element{finished_directory{path{root}}});
-		}
-	}
-
-	Si::unique_observable<file_iteration_element> list_files_recursively(boost::filesystem::path const &root)
-	{
-		return Si::erase_unique(Si::make_thread<file_iteration_element, Si::std_threading>([root](Si::yield_context<file_iteration_element> &yield)
-		{
-			Si::yield_context_sink<file_iteration_element> sink(yield);
-			return detail::list_files_recursively(sink, root);
-		}));
-	}
-
 	namespace detail
 	{
 		Si::error_or<boost::uint64_t> file_size(int file)
@@ -302,12 +255,12 @@ namespace fileserver
 			return static_cast<boost::uint64_t>(buffer.st_size);
 		}
 
-		boost::optional<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
+		Si::error_or<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
 		{
 			auto opening = Si::open_reading(file);
 			if (opening.is_error())
 			{
-				return boost::none;
+				return *opening.error();
 			}
 			auto opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();
@@ -333,20 +286,6 @@ namespace fileserver
 			auto sha256_digest = fileserver::sha256(hashable_content);
 			return std::make_pair(digest{sha256_digest}, location{file_system_location{path(file), size}});
 		}
-
-		boost::optional<std::pair<digest, location>> hash_file_iteration_element(file_iteration_element const &found)
-		{
-			return Si::visit<boost::optional<std::pair<digest, location>>>(
-				found,
-				[](found_file const &file) { return hash_file(file.name.to_boost_path()); },
-				[](finished_directory const &) { return boost::none; });
-		}
-	}
-
-	template <class PathObservable>
-	Si::unique_observable<std::pair<digest, location>> get_locations_by_hash(PathObservable &&paths)
-	{
-		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file_iteration_element));
 	}
 
 	struct directory_listing
@@ -386,7 +325,7 @@ namespace fileserver
 			case boost::filesystem::regular_file:
 				{
 					auto /*non-const*/ hashed = detail::hash_file(i->path());
-					if (!hashed)
+					if (hashed.is_error())
 					{
 						//ignore error for now
 						break;
@@ -398,7 +337,7 @@ namespace fileserver
 
 			case boost::filesystem::directory_file:
 				{
-					auto sub_dir = scan_directory(i->path());
+					auto /*non-const*/ sub_dir = scan_directory(i->path());
 					repository.merge(std::move(sub_dir.first));
 					add_to_listing(sub_dir.second);
 					break;
@@ -420,7 +359,11 @@ namespace fileserver
 		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
 		Si::tcp_acceptor clients(acceptor);
 
-		file_repository files;
+		std::pair<file_repository, digest> const scanned = scan_directory(served_dir);
+		std::cerr << "Scan complete. Tree hash value ";
+		print(std::cerr, scanned.second);
+		std::cerr << "\n";
+		file_repository const &files = scanned.first;
 
 		auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::yield_context<session_handle> &yield)
 		{
@@ -462,45 +405,6 @@ namespace fileserver
 		auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
 		auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 		done.start();
-
-		auto scanned = scan_directory(served_dir);
-
-		auto listed = Si::for_each(
-			Si::make_end_observable(
-				Si::transform(
-					get_locations_by_hash(
-						list_files_recursively(served_dir)),
-						[&files, &io](std::pair<digest, location> const &entry)
-		{
-			auto &out = std::cerr;
-			auto const digest_bytes = fileserver::get_digest_digits(entry.first);
-			encode_ascii_hex_digits(digest_bytes.begin(), digest_bytes.end(), std::ostreambuf_iterator<char>(out));
-			out
-				<< " "
-				<< Si::visit<std::string>(
-					entry.second,
-					[](file_system_location const &location)
-					{
-						return location.where.to_boost_path().string();
-					},
-					[](in_memory_location const &)
-					{
-						return ":memory:";
-					})
-				<< '\n';
-
-			fileserver::unknown_digest key(digest_bytes.begin(), digest_bytes.end());
-			io.post([key, entry, &files]() mutable
-			{
-				files.available[key].emplace_back(std::move(entry.second));
-			});
-			return Si::nothing();
-		})),
-			[](Si::ended)
-		{
-			std::cerr << "Scan complete\n";
-		});
-		listed.start();
 
 		io.run();
 	}
