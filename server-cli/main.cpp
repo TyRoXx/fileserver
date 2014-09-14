@@ -14,8 +14,10 @@
 #include <silicium/http/http.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
+#include <silicium/buffering_source.hpp>
 #include <silicium/linux/open.hpp>
 #include <silicium/read_file.hpp>
+#include <silicium/memory_source.hpp>
 #include <silicium/std_threading.hpp>
 #include <silicium/virtualized_source.hpp>
 #include <silicium/transforming_source.hpp>
@@ -30,6 +32,57 @@
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
 #include <sys/stat.h>
+
+namespace Si
+{
+	template <class Element>
+	struct single_source
+	{
+		using element_type = Element;
+
+		single_source()
+		{
+		}
+
+		explicit single_source(Element element)
+			: element(std::move(element))
+		{
+		}
+
+		boost::iterator_range<element_type const *> map_next(std::size_t size)
+		{
+			boost::ignore_unused_variable_warning(size);
+			if (used)
+			{
+				return {};
+			}
+			used = true;
+			return boost::make_iterator_range(&element, &element + 1);
+		}
+
+		element_type *copy_next(boost::iterator_range<element_type *> destination)
+		{
+			if (used || destination.empty())
+			{
+				return destination.begin();
+			}
+			*destination.begin() = std::move(element);
+			used = true;
+			return destination.begin() + 1;
+		}
+
+	private:
+
+		Element element;
+		bool used = false;
+	};
+
+	template <class Element>
+	auto make_single_source(Element &&element)
+	{
+		return single_source<typename std::decay<Element>::type>(std::forward<Element>(element));
+	}
+}
 
 namespace fileserver
 {
@@ -100,6 +153,18 @@ namespace fileserver
 		{
 			auto i = available.find(key);
 			return (i == end(available)) ? nullptr : &i->second;
+		}
+
+		void merge(file_repository merged)
+		{
+			for (auto /*non-const*/ &entry : merged.available)
+			{
+				auto &locations = available[entry.first];
+				for (auto &location : entry.second)
+				{
+					locations.emplace_back(std::move(location));
+				}
+			}
 		}
 	};
 
@@ -334,6 +399,71 @@ namespace fileserver
 		return Si::erase_unique(Si::transform_if_initialized<std::pair<digest, location>>(std::forward<PathObservable>(paths), detail::hash_file_iteration_element));
 	}
 
+	struct directory_listing
+	{
+		std::map<std::string, std::pair<boost::filesystem::file_type, digest>> entries;
+	};
+
+	std::vector<char> serialize(directory_listing const &listing)
+	{
+		std::vector<char> serialized;
+		auto sink = Si::make_container_sink(serialized);
+		for (auto const &entry : listing.entries)
+		{
+			Si::append(sink, entry.first);
+			Si::append(sink, ":");
+			Si::append(sink, boost::lexical_cast<std::string>(entry.second.first));
+			Si::append(sink, ":");
+			auto &&digest_digits = get_digest_digits(entry.second.second);
+			encode_ascii_hex_digits(digest_digits.begin(), digest_digits.end(), std::back_inserter(serialized));
+			Si::append(sink, "\n");
+		}
+		return serialized;
+	}
+
+	std::pair<file_repository, digest> scan_directory(boost::filesystem::path const &root)
+	{
+		file_repository repository;
+		directory_listing listing;
+		for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
+		{
+			auto const add_to_listing = [&listing, &i](digest const &entry_digest)
+			{
+				listing.entries.emplace(std::make_pair(i->path().leaf().string(), std::make_pair(i->status().type(), entry_digest)));
+			};
+			switch (i->status().type())
+			{
+			case boost::filesystem::regular_file:
+				{
+					auto /*non-const*/ hashed = detail::hash_file(i->path());
+					if (!hashed)
+					{
+						//ignore error for now
+						break;
+					}
+					repository.available[to_unknown_digest(hashed->first)].emplace_back(std::move(hashed->second));
+					add_to_listing(hashed->first);
+					break;
+				}
+
+			case boost::filesystem::directory_file:
+				{
+					auto sub_dir = scan_directory(i->path());
+					repository.merge(std::move(sub_dir.first));
+					add_to_listing(sub_dir.second);
+					break;
+				}
+
+			default:
+				break;
+			}
+		}
+		auto /*non-const*/ serialized_listing = serialize(listing);
+		auto const listing_digest = sha256(Si::make_single_source(boost::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
+		repository.available[to_unknown_digest(listing_digest)].emplace_back(location{in_memory_location{std::move(serialized_listing)}});
+		return std::make_pair(std::move(repository), listing_digest);
+	}
+
 	void serve_directory(boost::filesystem::path const &served_dir)
 	{
 		boost::asio::io_service io;
@@ -382,6 +512,8 @@ namespace fileserver
 		auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
 		auto done = Si::make_total_consumer(std::move(all_sessions_finished));
 		done.start();
+
+		auto scanned = scan_directory(served_dir);
 
 		auto listed = Si::for_each(
 			Si::make_end_observable(

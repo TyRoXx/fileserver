@@ -19,6 +19,12 @@ namespace fileserver
 			return boost::make_iterator_range(d.bytes.data(), d.bytes.data() + d.bytes.size());
 		});
 	}
+
+	unknown_digest to_unknown_digest(digest const &original)
+	{
+		auto &&digits = get_digest_digits(original);
+		return unknown_digest{digits.begin(), digits.end()};
+	}
 }
 
 #endif
