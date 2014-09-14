@@ -22,6 +22,7 @@
 #include <silicium/virtualized_source.hpp>
 #include <silicium/transforming_source.hpp>
 #include <silicium/end_observable.hpp>
+#include <silicium/single_source.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <server/digest.hpp>
@@ -32,57 +33,6 @@
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
 #include <sys/stat.h>
-
-namespace Si
-{
-	template <class Element>
-	struct single_source
-	{
-		using element_type = Element;
-
-		single_source()
-		{
-		}
-
-		explicit single_source(Element element)
-			: element(std::move(element))
-		{
-		}
-
-		boost::iterator_range<element_type const *> map_next(std::size_t size)
-		{
-			boost::ignore_unused_variable_warning(size);
-			if (used)
-			{
-				return {};
-			}
-			used = true;
-			return boost::make_iterator_range(&element, &element + 1);
-		}
-
-		element_type *copy_next(boost::iterator_range<element_type *> destination)
-		{
-			if (used || destination.empty())
-			{
-				return destination.begin();
-			}
-			*destination.begin() = std::move(element);
-			used = true;
-			return destination.begin() + 1;
-		}
-
-	private:
-
-		Element element;
-		bool used = false;
-	};
-
-	template <class Element>
-	auto make_single_source(Element &&element)
-	{
-		return single_source<typename std::decay<Element>::type>(std::forward<Element>(element));
-	}
-}
 
 namespace fileserver
 {
