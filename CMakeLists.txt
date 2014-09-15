@@ -43,6 +43,8 @@ find_package(Silicium REQUIRED)
 
 include_directories(${SILICIUM_INCLUDE_DIR})
 
+include_directories("dependencies/rapidjson/include")
+
 include_directories(".")
 add_subdirectory("server")
 add_subdirectory("server-cli")

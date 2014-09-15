@@ -32,6 +32,8 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
+#include <rapidjson/document.h>
+#include <rapidjson/prettywriter.h>
 #include <sys/stat.h>
 
 namespace fileserver
@@ -243,6 +245,32 @@ namespace fileserver
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
 
+	using content_type = boost::container::string;
+
+	content_type const blob_content_type = "blob";
+
+	struct typed_reference
+	{
+		content_type type;
+		digest referenced;
+
+		typed_reference()
+		{
+		}
+
+		explicit typed_reference(content_type type, digest referenced)
+			: type(std::move(type))
+			, referenced(std::move(referenced))
+		{
+		}
+	};
+
+	inline void print(std::ostream &out, typed_reference const &value)
+	{
+		out << value.type << ":";
+		print(out, value.referenced);
+	}
+
 	namespace detail
 	{
 		Si::error_or<boost::uint64_t> file_size(int file)
@@ -255,7 +283,7 @@ namespace fileserver
 			return static_cast<boost::uint64_t>(buffer.st_size);
 		}
 
-		Si::error_or<std::pair<digest, location>> hash_file(boost::filesystem::path const &file)
+		Si::error_or<std::pair<typed_reference, location>> hash_file(boost::filesystem::path const &file)
 		{
 			auto opening = Si::open_reading(file);
 			if (opening.is_error())
@@ -284,16 +312,18 @@ namespace fileserver
 					});
 			});
 			auto sha256_digest = fileserver::sha256(hashable_content);
-			return std::make_pair(digest{sha256_digest}, location{file_system_location{path(file), size}});
+			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), size}});
 		}
 	}
 
 	struct directory_listing
 	{
-		std::map<std::string, std::pair<boost::filesystem::file_type, digest>> entries;
+		std::map<std::string, typed_reference> entries;
 	};
 
-	std::vector<char> serialize(directory_listing const &listing)
+	content_type const txt_listing_content_type = "txt_v1";
+
+	std::pair<std::vector<char>, content_type> serialize_txt(directory_listing const &listing)
 	{
 		std::vector<char> serialized;
 		auto sink = Si::make_container_sink(serialized);
@@ -301,43 +331,160 @@ namespace fileserver
 		{
 			Si::append(sink, entry.first);
 			Si::append(sink, ":");
-			Si::append(sink, boost::lexical_cast<std::string>(entry.second.first));
+			typed_reference const &ref = entry.second;
+			Si::append(sink, ref.type.c_str());
 			Si::append(sink, ":");
-			auto &&digest_digits = get_digest_digits(entry.second.second);
+			auto &&digest_digits = get_digest_digits(ref.referenced);
 			encode_ascii_hex_digits(digest_digits.begin(), digest_digits.end(), std::back_inserter(serialized));
 			Si::append(sink, "\n");
 		}
-		return serialized;
+		return std::make_pair(std::move(serialized), txt_listing_content_type);
 	}
 
-	std::pair<file_repository, digest> scan_directory(boost::filesystem::path const &root)
+	namespace detail
+	{
+		template <class Sink>
+		struct sink_stream
+		{
+			using Ch = char;
+
+			explicit sink_stream(Sink sink)
+				: sink(std::move(sink))
+			{
+			}
+
+			//! Read the current character from stream without moving the read cursor.
+			Ch Peek() const
+			{
+				SILICIUM_UNREACHABLE();
+			}
+
+			//! Read the current character from stream and moving the read cursor to next character.
+			Ch Take()
+			{
+				SILICIUM_UNREACHABLE();
+			}
+
+			//! Get the current read cursor.
+			//! \return Number of characters read from start.
+			size_t Tell()
+			{
+				SILICIUM_UNREACHABLE();
+			}
+
+			//! Begin writing operation at the current read pointer.
+			//! \return The begin writer pointer.
+			Ch* PutBegin()
+			{
+				SILICIUM_UNREACHABLE();
+			}
+
+			//! Write a character.
+			void Put(Ch c)
+			{
+				Si::append(sink, c);
+			}
+
+			//! Flush the buffer.
+			void Flush()
+			{
+			}
+
+			//! End the writing operation.
+			//! \param begin The begin write pointer returned by PutBegin().
+			//! \return Number of characters written.
+			size_t PutEnd(Ch* begin)
+			{
+				SILICIUM_UNREACHABLE();
+			}
+
+		private:
+
+			Sink sink;
+		};
+
+		template <class Sink>
+		auto make_sink_stream(Sink &&sink)
+		{
+			return sink_stream<typename std::decay<Sink>::type>(std::forward<Sink>(sink));
+		}
+
+		std::string const &get_digest_type_name(digest const &instance)
+		{
+			return Si::visit<std::string const &>(
+				instance,
+				[](sha256_digest const &) -> std::string const &
+			{
+				static std::string const name = "SHA256";
+				return name;
+			});
+		}
+	}
+
+	content_type const json_listing_content_type = "json_v1";
+
+	std::pair<std::vector<char>, content_type> serialize_json(directory_listing const &listing)
+	{
+		std::vector<char> serialized;
+		auto stream = detail::make_sink_stream(Si::make_container_sink(serialized));
+		rapidjson::PrettyWriter<decltype(stream)> writer(stream);
+		writer.StartObject();
+		for (auto const &entry : listing.entries)
+		{
+			writer.Key(entry.first.data(), entry.first.size());
+			writer.StartObject();
+			{
+				typed_reference const &ref = entry.second;
+				writer.Key("type");
+				writer.String(ref.type.data(), ref.type.size());
+
+				writer.Key("content");
+				std::string content;
+				auto const &content_digits = get_digest_digits(ref.referenced);
+				encode_ascii_hex_digits(content_digits.begin(), content_digits.end(), std::back_inserter(content));
+				writer.String(content.data(), content.size());
+
+				writer.Key("hash");
+				auto const &hash = detail::get_digest_type_name(ref.referenced);
+				writer.String(hash.data(), hash.size());
+			}
+			writer.EndObject();
+		}
+		writer.EndObject();
+		return std::make_pair(std::move(serialized), json_listing_content_type);
+	}
+
+	std::pair<file_repository, typed_reference> scan_directory(
+		boost::filesystem::path const &root,
+		std::function<std::pair<std::vector<char>, content_type> (directory_listing const &)> const &serialize_listing,
+		std::function<Si::error_or<std::pair<typed_reference, location>> (boost::filesystem::path const &)> const &hash_file)
 	{
 		file_repository repository;
 		directory_listing listing;
 		for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
 		{
-			auto const add_to_listing = [&listing, &i](digest const &entry_digest)
+			auto const add_to_listing = [&listing, &i](typed_reference entry)
 			{
-				listing.entries.emplace(std::make_pair(i->path().leaf().string(), std::make_pair(i->status().type(), entry_digest)));
+				listing.entries.emplace(std::make_pair(i->path().leaf().string(), std::move(entry)));
 			};
 			switch (i->status().type())
 			{
 			case boost::filesystem::regular_file:
 				{
-					auto /*non-const*/ hashed = detail::hash_file(i->path());
+					auto /*non-const*/ hashed = hash_file(i->path());
 					if (hashed.is_error())
 					{
 						//ignore error for now
 						break;
 					}
-					repository.available[to_unknown_digest(hashed->first)].emplace_back(std::move(hashed->second));
+					repository.available[to_unknown_digest(hashed->first.referenced)].emplace_back(std::move(hashed->second));
 					add_to_listing(hashed->first);
 					break;
 				}
 
 			case boost::filesystem::directory_file:
 				{
-					auto /*non-const*/ sub_dir = scan_directory(i->path());
+					auto /*non-const*/ sub_dir = scan_directory(i->path(), serialize_listing, hash_file);
 					repository.merge(std::move(sub_dir.first));
 					add_to_listing(sub_dir.second);
 					break;
@@ -347,10 +494,11 @@ namespace fileserver
 				break;
 			}
 		}
-		auto /*non-const*/ serialized_listing = serialize(listing);
+		auto /*non-const*/ typed_serialized_listing = serialize_listing(listing);
+		auto /*non-const*/ &serialized_listing = typed_serialized_listing.first;
 		auto const listing_digest = sha256(Si::make_single_source(boost::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
 		repository.available[to_unknown_digest(listing_digest)].emplace_back(location{in_memory_location{std::move(serialized_listing)}});
-		return std::make_pair(std::move(repository), listing_digest);
+		return std::make_pair(std::move(repository), typed_reference(typed_serialized_listing.second, listing_digest));
 	}
 
 	void serve_directory(boost::filesystem::path const &served_dir)
@@ -359,7 +507,7 @@ namespace fileserver
 		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
 		Si::tcp_acceptor clients(acceptor);
 
-		std::pair<file_repository, digest> const scanned = scan_directory(served_dir);
+		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, serialize_json, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
 		print(std::cerr, scanned.second);
 		std::cerr << "\n";
