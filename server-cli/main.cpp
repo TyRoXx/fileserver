@@ -25,7 +25,7 @@
 #include <silicium/single_source.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
-#include <server/digest.hpp>
+#include <server/typed_reference.hpp>
 #include <server/path.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
@@ -244,32 +244,6 @@ namespace fileserver
 
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
-
-	using content_type = boost::container::string;
-
-	content_type const blob_content_type = "blob";
-
-	struct typed_reference
-	{
-		content_type type;
-		digest referenced;
-
-		typed_reference()
-		{
-		}
-
-		explicit typed_reference(content_type type, digest referenced)
-			: type(std::move(type))
-			, referenced(std::move(referenced))
-		{
-		}
-	};
-
-	inline void print(std::ostream &out, typed_reference const &value)
-	{
-		out << value.type << ":";
-		print(out, value.referenced);
-	}
 
 	namespace detail
 	{
