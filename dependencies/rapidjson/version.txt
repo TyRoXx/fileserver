@@ -1,0 +1,11 @@
+https://github.com/miloyip/rapidjson
+
+commit 2475e9524ba575b6b2839b2fb31bee08e229f358
+Merge: a5ffc5b a69dffb
+Author: Milo Yip <miloyip@gmail.com>
+Date:   Thu Sep 11 16:52:36 2014 +0800
+
+    Merge pull request #140 from kojik1010/mempool_null_check
+    
+    make MemoryPoolAllocator's Malloc work after Clear if a buffer was not supplied by the user
+
