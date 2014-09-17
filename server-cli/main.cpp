@@ -296,26 +296,6 @@ namespace fileserver
 		std::map<std::string, typed_reference> entries;
 	};
 
-	content_type const txt_listing_content_type = "txt_v1";
-
-	std::pair<std::vector<char>, content_type> serialize_txt(directory_listing const &listing)
-	{
-		std::vector<char> serialized;
-		auto sink = Si::make_container_sink(serialized);
-		for (auto const &entry : listing.entries)
-		{
-			Si::append(sink, entry.first);
-			Si::append(sink, ":");
-			typed_reference const &ref = entry.second;
-			Si::append(sink, ref.type.c_str());
-			Si::append(sink, ":");
-			auto &&digest_digits = get_digest_digits(ref.referenced);
-			encode_ascii_hex_digits(digest_digits.begin(), digest_digits.end(), std::back_inserter(serialized));
-			Si::append(sink, "\n");
-		}
-		return std::make_pair(std::move(serialized), txt_listing_content_type);
-	}
-
 	namespace detail
 	{
 		std::string const &get_digest_type_name(digest const &instance)
