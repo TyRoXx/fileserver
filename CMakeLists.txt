@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 project(fileserver)
 
 if(UNIX)
-	add_definitions("-Wall -Wextra -pedantic -std=c++1y -Wconversion -Wvla")
+	add_definitions("-Wall -Wextra -std=c++1y -Wconversion -Wvla")
+	#add_definitions("-pedantic")
 endif()
 
 if(MSVC)
