@@ -11,6 +11,7 @@
 #include <boost/program_options.hpp>
 #include <boost/asio/io_service.hpp>
 #include <iostream>
+#include <fuse.h>
 
 namespace
 {
@@ -79,18 +80,115 @@ namespace
 		connecting.start();
 		io.run();
 	}
+
+	char const * const hello_path = "/hello";
+	char const * const hello_str = "Hello, fuse!\n";
+
+	int hello_getattr(const char *path, struct stat *stbuf)
+	{
+		int res = 0;
+
+		memset(stbuf, 0, sizeof(struct stat));
+		if (strcmp(path, "/") == 0) {
+			stbuf->st_mode = S_IFDIR | 0755;
+			stbuf->st_nlink = 2;
+		} else if (strcmp(path, hello_path) == 0) {
+			stbuf->st_mode = S_IFREG | 0444;
+			stbuf->st_nlink = 1;
+			stbuf->st_size = strlen(hello_str);
+		} else
+			res = -ENOENT;
+
+		return res;
+	}
+
+	static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+				 off_t offset, struct fuse_file_info *fi)
+	{
+		(void) offset;
+		(void) fi;
+
+		if (strcmp(path, "/") != 0)
+			return -ENOENT;
+
+		filler(buf, ".", NULL, 0);
+		filler(buf, "..", NULL, 0);
+		filler(buf, hello_path + 1, NULL, 0);
+
+		return 0;
+	}
+
+	static int hello_open(const char *path, struct fuse_file_info *fi)
+	{
+		if (strcmp(path, hello_path) != 0)
+			return -ENOENT;
+
+		if ((fi->flags & 3) != O_RDONLY)
+			return -EACCES;
+
+		return 0;
+	}
+
+	static int hello_read(const char *path, char *buf, size_t size, off_t offset,
+			      struct fuse_file_info *fi)
+	{
+		size_t len;
+		(void) fi;
+		if(strcmp(path, hello_path) != 0)
+			return -ENOENT;
+
+		len = strlen(hello_str);
+		if (static_cast<size_t>(offset) < len) {
+			if (offset + size > len)
+				size = len - offset;
+			memcpy(buf, hello_str + offset, size);
+		} else
+			size = 0;
+
+		return static_cast<int>(size);
+	}
+
+	struct user_data_for_fuse
+	{
+
+	};
+
+	void mount_directory(fileserver::unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
+	{
+		fuse_args args{};
+		fuse_chan * const chan = fuse_mount(mount_point.c_str(), &args);
+		if (!chan)
+		{
+			throw std::runtime_error("fuse_mount failure");
+		}
+		fuse_operations operations{};
+		operations.getattr = hello_getattr;
+		operations.readdir = hello_readdir;
+		operations.open = hello_open;
+		operations.read = hello_read;
+		user_data_for_fuse user_data;
+		fuse * const f = fuse_new(chan, &args, &operations, sizeof(operations), &user_data);
+		if (!f)
+		{
+			throw std::runtime_error("fuse_new failure");
+		}
+		fuse_loop(f);
+		fuse_destroy(f);
+	}
 }
 
 int main(int argc, char **argv)
 {
 	std::string verb;
 	std::string digest;
+	boost::filesystem::path mount_point;
 
 	boost::program_options::options_description desc("Allowed options");
 	desc.add_options()
 	    ("help", "produce help message")
 		("verb", boost::program_options::value(&verb), "what to do (get)")
 		("digest,d", boost::program_options::value(&digest), "the hash of the file to get/mount")
+		("mountpoint", boost::program_options::value(&mount_point), "a directory to mount at")
 	;
 
 	boost::program_options::positional_options_description positional;
@@ -117,16 +215,39 @@ int main(int argc, char **argv)
 	    return 1;
 	}
 
-	if (verb == "get")
+	auto const parse_digest = [&digest]() -> boost::optional<fileserver::unknown_digest>
 	{
-		auto requested = fileserver::parse_digest(digest.begin(), digest.end());
-		if (!requested)
+		auto parsed = fileserver::parse_digest(digest.begin(), digest.end());
+		if (!parsed)
 		{
 			std::cerr << "The digest must be an even number of hexidecimal digits.\n";
+			return boost::none;
+		}
+		if (parsed->empty())
+		{
+			std::cerr << "The digest must be empty\n";
+			return boost::none;
+		}
+		return parsed;
+	};
+
+	if (verb == "get")
+	{
+		auto requested = parse_digest();
+		if (!requested)
+		{
 			return 1;
 		}
 		get_file(*requested);
-		return 0;
+	}
+	else if (verb == "mount")
+	{
+		auto requested = parse_digest();
+		if (!requested)
+		{
+			return 1;
+		}
+		mount_directory(*requested, mount_point);
 	}
 	else
 	{

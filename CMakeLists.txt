@@ -4,6 +4,7 @@ project(fileserver)
 if(UNIX)
 	add_definitions("-Wall -Wextra -std=c++1y -Wconversion -Wvla")
 	#add_definitions("-pedantic")
+	add_definitions("-Wno-missing-field-initializers")
 endif()
 
 if(MSVC)
@@ -45,6 +46,14 @@ find_package(Silicium REQUIRED)
 include_directories(${SILICIUM_INCLUDE_DIR})
 
 include_directories("dependencies/rapidjson/include")
+
+find_package(FUSE REQUIRED)
+if(FUSE_FOUND)
+	#fuse wants this to be defined
+	add_definitions("-D_FILE_OFFSET_BITS=64")
+	add_definitions("-DFUSE_USE_VERSION=26")
+	include_directories(${FUSE_INCLUDE_DIRS})
+endif()
 
 include_directories(".")
 add_subdirectory("server")
