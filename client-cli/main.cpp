@@ -1,4 +1,5 @@
 #include <server/digest.hpp>
+#include <server/path.hpp>
 #include <silicium/connecting_observable.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/http/http.hpp>
@@ -153,10 +154,30 @@ namespace
 
 	};
 
+	struct chan_deleter
+	{
+		fileserver::path mount_point;
+
+		void operator()(fuse_chan *chan) const
+		{
+			fuse_unmount(mount_point.c_str(), chan);
+		}
+	};
+
+	struct fuse_deleter
+	{
+		void operator()(fuse *f) const
+		{
+			fuse_destroy(f);
+		}
+	};
+
 	void mount_directory(fileserver::unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
 	{
+		chan_deleter deleter;
+		deleter.mount_point = fileserver::path(mount_point);
 		fuse_args args{};
-		fuse_chan * const chan = fuse_mount(mount_point.c_str(), &args);
+		std::unique_ptr<fuse_chan, chan_deleter> chan(fuse_mount(mount_point.c_str(), &args), std::move(deleter));
 		if (!chan)
 		{
 			throw std::runtime_error("fuse_mount failure");
@@ -167,13 +188,16 @@ namespace
 		operations.open = hello_open;
 		operations.read = hello_read;
 		user_data_for_fuse user_data;
-		fuse * const f = fuse_new(chan, &args, &operations, sizeof(operations), &user_data);
+		std::unique_ptr<fuse, fuse_deleter> const f(fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
 		if (!f)
 		{
 			throw std::runtime_error("fuse_new failure");
 		}
-		fuse_loop(f);
-		fuse_destroy(f);
+
+		//fuse_new seems to take ownership of the fuse_chan
+		chan.release();
+
+		fuse_loop(f.get());
 	}
 }
 
