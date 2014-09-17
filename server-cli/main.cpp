@@ -1,7 +1,6 @@
-#include <server/sink_stream.hpp>
+#include <server/directory_listing.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
-#include <server/typed_reference.hpp>
 #include <server/path.hpp>
 #include <silicium/yield_context_sink.hpp>
 #include <silicium/tcp_acceptor.hpp>
@@ -33,8 +32,6 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
-#include <rapidjson/document.h>
-#include <rapidjson/prettywriter.h>
 #include <sys/stat.h>
 
 namespace fileserver
@@ -289,58 +286,6 @@ namespace fileserver
 			auto sha256_digest = fileserver::sha256(hashable_content);
 			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), size}});
 		}
-	}
-
-	struct directory_listing
-	{
-		std::map<std::string, typed_reference> entries;
-	};
-
-	namespace detail
-	{
-		std::string const &get_digest_type_name(digest const &instance)
-		{
-			return Si::visit<std::string const &>(
-				instance,
-				[](sha256_digest const &) -> std::string const &
-			{
-				static std::string const name = "SHA256";
-				return name;
-			});
-		}
-	}
-
-	content_type const json_listing_content_type = "json_v1";
-
-	std::pair<std::vector<char>, content_type> serialize_json(directory_listing const &listing)
-	{
-		std::vector<char> serialized;
-		auto stream = make_sink_stream(Si::make_container_sink(serialized));
-		rapidjson::PrettyWriter<decltype(stream)> writer(stream);
-		writer.StartObject();
-		for (auto const &entry : listing.entries)
-		{
-			writer.Key(entry.first.data(), entry.first.size());
-			writer.StartObject();
-			{
-				typed_reference const &ref = entry.second;
-				writer.Key("type");
-				writer.String(ref.type.data(), ref.type.size());
-
-				writer.Key("content");
-				std::string content;
-				auto const &content_digits = get_digest_digits(ref.referenced);
-				encode_ascii_hex_digits(content_digits.begin(), content_digits.end(), std::back_inserter(content));
-				writer.String(content.data(), content.size());
-
-				writer.Key("hash");
-				auto const &hash = detail::get_digest_type_name(ref.referenced);
-				writer.String(hash.data(), hash.size());
-			}
-			writer.EndObject();
-		}
-		writer.EndObject();
-		return std::make_pair(std::move(serialized), json_listing_content_type);
 	}
 
 	std::pair<file_repository, typed_reference> scan_directory(
