@@ -1,3 +1,8 @@
+#include <server/sink_stream.hpp>
+#include <server/sha256.hpp>
+#include <server/hexadecimal.hpp>
+#include <server/typed_reference.hpp>
+#include <server/path.hpp>
 #include <silicium/yield_context_sink.hpp>
 #include <silicium/tcp_acceptor.hpp>
 #include <silicium/coroutine.hpp>
@@ -23,10 +28,6 @@
 #include <silicium/transforming_source.hpp>
 #include <silicium/end_observable.hpp>
 #include <silicium/single_source.hpp>
-#include <server/sha256.hpp>
-#include <server/hexadecimal.hpp>
-#include <server/typed_reference.hpp>
-#include <server/path.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -317,72 +318,6 @@ namespace fileserver
 
 	namespace detail
 	{
-		template <class Sink>
-		struct sink_stream
-		{
-			using Ch = char;
-
-			explicit sink_stream(Sink sink)
-				: sink(std::move(sink))
-			{
-			}
-
-			//! Read the current character from stream without moving the read cursor.
-			Ch Peek() const
-			{
-				SILICIUM_UNREACHABLE();
-			}
-
-			//! Read the current character from stream and moving the read cursor to next character.
-			Ch Take()
-			{
-				SILICIUM_UNREACHABLE();
-			}
-
-			//! Get the current read cursor.
-			//! \return Number of characters read from start.
-			size_t Tell()
-			{
-				SILICIUM_UNREACHABLE();
-			}
-
-			//! Begin writing operation at the current read pointer.
-			//! \return The begin writer pointer.
-			Ch* PutBegin()
-			{
-				SILICIUM_UNREACHABLE();
-			}
-
-			//! Write a character.
-			void Put(Ch c)
-			{
-				Si::append(sink, c);
-			}
-
-			//! Flush the buffer.
-			void Flush()
-			{
-			}
-
-			//! End the writing operation.
-			//! \param begin The begin write pointer returned by PutBegin().
-			//! \return Number of characters written.
-			size_t PutEnd(Ch* begin)
-			{
-				SILICIUM_UNREACHABLE();
-			}
-
-		private:
-
-			Sink sink;
-		};
-
-		template <class Sink>
-		auto make_sink_stream(Sink &&sink)
-		{
-			return sink_stream<typename std::decay<Sink>::type>(std::forward<Sink>(sink));
-		}
-
 		std::string const &get_digest_type_name(digest const &instance)
 		{
 			return Si::visit<std::string const &>(
@@ -400,7 +335,7 @@ namespace fileserver
 	std::pair<std::vector<char>, content_type> serialize_json(directory_listing const &listing)
 	{
 		std::vector<char> serialized;
-		auto stream = detail::make_sink_stream(Si::make_container_sink(serialized));
+		auto stream = make_sink_stream(Si::make_container_sink(serialized));
 		rapidjson::PrettyWriter<decltype(stream)> writer(stream);
 		writer.StartObject();
 		for (auto const &entry : listing.entries)
