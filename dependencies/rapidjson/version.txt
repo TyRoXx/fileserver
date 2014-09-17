@@ -1,11 +1,8 @@
-https://github.com/miloyip/rapidjson
+https://github.com/TyRoXx/rapidjson
 
-commit 2475e9524ba575b6b2839b2fb31bee08e229f358
-Merge: a5ffc5b a69dffb
-Author: Milo Yip <miloyip@gmail.com>
-Date:   Thu Sep 11 16:52:36 2014 +0800
+commit b9608f2cf27b7c0be60dbe8f136b29a0a9cba42f
+Author: TyRoXx <tyroxxxx@gmail.com>
+Date:   Wed Sep 17 20:30:19 2014 +0200
 
-    Merge pull request #140 from kojik1010/mempool_null_check
-    
-    make MemoryPoolAllocator's Malloc work after Clear if a buffer was not supplied by the user
+    turn implicit integer conversions into static_casts to avoid -Wconversion warnings
 
