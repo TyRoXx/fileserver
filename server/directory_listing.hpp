@@ -3,9 +3,16 @@
 
 #include <server/sink_stream.hpp>
 #include <server/typed_reference.hpp>
+#include <map>
+
+//workaround for a bug in rapidjson (SizeType is "unsigned" by default)
+#define RAPIDJSON_NO_SIZETYPEDEFINE
+namespace rapidjson
+{
+	typedef ::std::size_t SizeType;
+}
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
-#include <map>
 
 namespace fileserver
 {
