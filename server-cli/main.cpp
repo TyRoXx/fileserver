@@ -1,3 +1,4 @@
+#include <server/scan_directory.hpp>
 #include <server/directory_listing.hpp>
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
@@ -32,7 +33,6 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
-#include <sys/stat.h>
 
 namespace fileserver
 {
@@ -67,56 +67,6 @@ namespace fileserver
 		}
 		return std::move(request);
 	}
-
-	struct file_system_location
-	{
-		path where;
-		boost::uint64_t size;
-	};
-
-	struct in_memory_location
-	{
-		std::vector<char> content;
-	};
-
-	using location = Si::fast_variant<file_system_location, in_memory_location>;
-
-	boost::uint64_t location_file_size(location const &location)
-	{
-		return Si::visit<boost::uint64_t>(
-			location,
-			[](file_system_location const &file)
-		{
-			return file.size;
-		},
-			[](in_memory_location const &memory)
-		{
-			return memory.content.size();
-		});
-	}
-
-	struct file_repository
-	{
-		boost::unordered_map<unknown_digest, std::vector<location>> available;
-
-		std::vector<location> const *find_location(unknown_digest const &key) const
-		{
-			auto i = available.find(key);
-			return (i == end(available)) ? nullptr : &i->second;
-		}
-
-		void merge(file_repository merged)
-		{
-			for (auto /*non-const*/ &entry : merged.available)
-			{
-				auto &locations = available[entry.first];
-				for (auto &location : entry.second)
-				{
-					locations.emplace_back(std::move(location));
-				}
-			}
-		}
-	};
 
 	Si::http::response_header make_not_found_response()
 	{
@@ -242,98 +192,6 @@ namespace fileserver
 
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
-
-	namespace detail
-	{
-		Si::error_or<boost::uint64_t> file_size(int file)
-		{
-			struct stat buffer;
-			if (fstat(file, &buffer) < 0)
-			{
-				return boost::system::error_code(errno, boost::system::system_category());
-			}
-			return static_cast<boost::uint64_t>(buffer.st_size);
-		}
-
-		Si::error_or<std::pair<typed_reference, location>> hash_file(boost::filesystem::path const &file)
-		{
-			auto opening = Si::open_reading(file);
-			if (opening.is_error())
-			{
-				return *opening.error();
-			}
-			auto opened = std::move(opening).get();
-			auto const size = file_size(opened.handle).get();
-			std::array<char, 8192> buffer;
-			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size())));
-			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
-				content,
-				[&buffer](Si::file_read_result piece)
-			{
-				return Si::visit<boost::iterator_range<char const *>>(
-					piece,
-					[&buffer](std::size_t length) -> boost::iterator_range<char const *>
-					{
-						assert(length <= buffer.size());
-						return boost::make_iterator_range(buffer.data(), buffer.data() + length);
-					},
-					[](boost::system::error_code error) -> boost::iterator_range<char const *>
-					{
-						boost::throw_exception(boost::system::system_error(error));
-						SILICIUM_UNREACHABLE();
-					});
-			});
-			auto sha256_digest = fileserver::sha256(hashable_content);
-			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), size}});
-		}
-	}
-
-	std::pair<file_repository, typed_reference> scan_directory(
-		boost::filesystem::path const &root,
-		std::function<std::pair<std::vector<char>, content_type> (directory_listing const &)> const &serialize_listing,
-		std::function<Si::error_or<std::pair<typed_reference, location>> (boost::filesystem::path const &)> const &hash_file)
-	{
-		file_repository repository;
-		directory_listing listing;
-		for (boost::filesystem::directory_iterator i(root); i != boost::filesystem::directory_iterator(); ++i)
-		{
-			auto const add_to_listing = [&listing, &i](typed_reference entry)
-			{
-				listing.entries.emplace(std::make_pair(i->path().leaf().string(), std::move(entry)));
-			};
-			switch (i->status().type())
-			{
-			case boost::filesystem::regular_file:
-				{
-					auto /*non-const*/ hashed = hash_file(i->path());
-					if (hashed.is_error())
-					{
-						//ignore error for now
-						break;
-					}
-					repository.available[to_unknown_digest(hashed->first.referenced)].emplace_back(std::move(hashed->second));
-					add_to_listing(hashed->first);
-					break;
-				}
-
-			case boost::filesystem::directory_file:
-				{
-					auto /*non-const*/ sub_dir = scan_directory(i->path(), serialize_listing, hash_file);
-					repository.merge(std::move(sub_dir.first));
-					add_to_listing(sub_dir.second);
-					break;
-				}
-
-			default:
-				break;
-			}
-		}
-		auto /*non-const*/ typed_serialized_listing = serialize_listing(listing);
-		auto /*non-const*/ &serialized_listing = typed_serialized_listing.first;
-		auto const listing_digest = sha256(Si::make_single_source(boost::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
-		repository.available[to_unknown_digest(listing_digest)].emplace_back(location{in_memory_location{std::move(serialized_listing)}});
-		return std::make_pair(std::move(repository), typed_reference(typed_serialized_listing.second, listing_digest));
-	}
 
 	void serve_directory(boost::filesystem::path const &served_dir)
 	{
