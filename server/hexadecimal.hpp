@@ -29,7 +29,7 @@ namespace fileserver
 		return std::make_pair(std::move(begin), std::move(destination));
 	}
 
-	Si::optional<unsigned char> decode_ascii_hex_digit(char digit)
+	inline Si::optional<unsigned char> decode_ascii_hex_digit(char digit)
 	{
 		switch (digit)
 		{
