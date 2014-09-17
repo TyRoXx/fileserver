@@ -7,6 +7,7 @@
 #include <silicium/error_or.hpp>
 #include <silicium/virtualized_source.hpp>
 #include <silicium/file_source.hpp>
+#include <silicium/single_source.hpp>
 #include <silicium/transforming_source.hpp>
 #include <silicium/linux/open.hpp>
 #include <boost/filesystem/operations.hpp>
