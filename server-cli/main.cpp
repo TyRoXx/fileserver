@@ -60,11 +60,12 @@ namespace fileserver
 			++digest_begin;
 		}
 		content_request request;
-		auto const rest = decode_ascii_hex_bytes(digest_begin, path.end(), std::back_inserter(request.requested_file));
-		if (rest.first != path.end())
+		auto digest = parse_digest(digest_begin, path.end());
+		if (!digest)
 		{
 			return Si::none;
 		}
+		request.requested_file = std::move(*digest);
 		return std::move(request);
 	}
 

@@ -36,6 +36,25 @@ namespace fileserver
 		auto &&digits = get_digest_digits(value);
 		encode_ascii_hex_digits(digits.begin(), digits.end(), std::ostreambuf_iterator<char>(out));
 	}
+
+	template <class InputIterator>
+	boost::optional<unknown_digest> parse_digest(InputIterator begin, InputIterator end)
+	{
+		unknown_digest result;
+		auto const rest = decode_ascii_hex_bytes(begin, end, std::back_inserter(result));
+		if (rest.first != end)
+		{
+			return boost::none;
+		}
+		return std::move(result);
+	}
+
+	inline std::string format_digest(unknown_digest const &value)
+	{
+		std::string formatted;
+		encode_ascii_hex_digits(value.begin(), value.end(), std::back_inserter(formatted));
+		return formatted;
+	}
 }
 
 #endif
