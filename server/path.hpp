@@ -1,7 +1,7 @@
 #ifndef FILESERVER_PATH_HPP
 #define FILESERVER_PATH_HPP
 
-#include <boost/container/vector.hpp>
+#include <boost/container/string.hpp>
 #include <boost/filesystem/path.hpp>
 
 namespace fileserver
@@ -34,9 +34,14 @@ namespace fileserver
 			return boost::filesystem::path(characters.begin(), characters.end());
 		}
 
+		char const *c_str() const BOOST_NOEXCEPT
+		{
+			return characters.c_str();
+		}
+
 	private:
 
-		boost::container::vector<boost::filesystem::path::value_type> characters;
+		boost::container::basic_string<boost::filesystem::path::value_type> characters;
 	};
 }
 
