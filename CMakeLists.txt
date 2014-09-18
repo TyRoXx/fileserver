@@ -5,7 +5,7 @@ if(UNIX)
 	add_definitions("-Wall -Wextra -std=c++1y -Wconversion -Wvla")
 	add_definitions("-Wno-missing-field-initializers")
 
-	option(FILESERVER_PEDANTIC "pass -pedantic to the compiler (may generate useless warnings)" OFF)
+	option(FILESERVER_PEDANTIC "pass -pedantic to the compiler (may generate useless warnings)" ON)
 	if(FILESERVER_PEDANTIC)
 		add_definitions("-Wpedantic")
 	endif()
@@ -35,6 +35,7 @@ find_package(Boost ${SILICIUM_BOOST_REQUIRED} COMPONENTS unit_test_framework thr
 if(UNIX)
 	add_definitions("-DBOOST_TEST_DYN_LINK")
 endif()
+include_directories(SYSTEM ${BOOST_INCLUDE_DIR})
 
 if(WIN32)
 	#Boost.Asio wants this for no reason
@@ -42,14 +43,14 @@ if(WIN32)
 endif()
 
 find_package(OpenSSL REQUIRED)
-include_directories(${OPENSSL_INCLUDE_DIR})
+include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 find_package(Silicium REQUIRED)
 
-include_directories(${SILICIUM_INCLUDE_DIR})
+include_directories(SYSTEM ${SILICIUM_INCLUDE_DIR})
 
-include_directories("dependencies/rapidjson/include")
+include_directories(SYSTEM "dependencies/rapidjson/include")
 
 find_package(FUSE REQUIRED)
 if(FUSE_FOUND)
