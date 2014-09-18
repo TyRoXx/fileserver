@@ -3,8 +3,12 @@ project(fileserver)
 
 if(UNIX)
 	add_definitions("-Wall -Wextra -std=c++1y -Wconversion -Wvla")
-	#add_definitions("-pedantic")
 	add_definitions("-Wno-missing-field-initializers")
+
+	option(FILESERVER_PEDANTIC "pass -pedantic to the compiler (may generate useless warnings)" OFF)
+	if(FILESERVER_PEDANTIC)
+		add_definitions("-Wpedantic")
+	endif()
 endif()
 
 if(MSVC)
