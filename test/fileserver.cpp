@@ -13,8 +13,9 @@ namespace
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_serialize_empty)
 {
 	fileserver::directory_listing const empty;
-	std::pair<std::vector<char>, fileserver::content_type> const encoded = fileserver::serialize_json(empty);
-	BOOST_CHECK(vector_from_c_str("{}") == encoded.first);
+	std::vector<char> encoded;
+	fileserver::serialize_json(Si::make_container_sink(encoded), empty);
+	BOOST_CHECK(vector_from_c_str("{}") == encoded);
 }
 
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_empty)
@@ -51,8 +52,9 @@ namespace
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_serialize_unicode)
 {
 	auto const listing = a_directory_listing();
-	std::pair<std::vector<char>, fileserver::content_type> const encoded = fileserver::serialize_json(listing);
-	BOOST_CHECK(a_json_directory_listing == encoded.first);
+	std::vector<char> encoded;
+	fileserver::serialize_json(Si::make_container_sink(encoded), listing);
+	BOOST_CHECK(a_json_directory_listing == encoded);
 }
 
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_unicode)

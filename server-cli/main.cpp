@@ -194,13 +194,20 @@ namespace fileserver
 	//TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
 
+	std::pair<std::vector<char>, content_type> directory_listing_to_json_bytes(directory_listing const &listing)
+	{
+		std::vector<char> bytes;
+		serialize_json(Si::make_container_sink(bytes), listing);
+		return std::make_pair(std::move(bytes), json_listing_content_type);
+	}
+
 	void serve_directory(boost::filesystem::path const &served_dir)
 	{
 		boost::asio::io_service io;
 		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
 		Si::tcp_acceptor clients(acceptor);
 
-		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, serialize_json, detail::hash_file);
+		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
 		print(std::cerr, scanned.second);
 		std::cerr << "\n";

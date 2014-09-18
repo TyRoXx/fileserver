@@ -39,10 +39,10 @@ namespace fileserver
 
 	static content_type const json_listing_content_type = "json_v1";
 
-	inline std::pair<std::vector<char>, content_type> serialize_json(directory_listing const &listing)
+	template <class CharSink>
+	void serialize_json(CharSink &&sink, directory_listing const &listing)
 	{
-		std::vector<char> serialized;
-		auto stream = make_sink_stream(Si::make_container_sink(serialized));
+		auto stream = make_sink_stream(std::forward<CharSink>(sink));
 		rapidjson::PrettyWriter<decltype(stream)> writer(stream);
 		writer.StartObject();
 		for (auto const &entry : listing.entries)
@@ -67,7 +67,6 @@ namespace fileserver
 			writer.EndObject();
 		}
 		writer.EndObject();
-		return std::make_pair(std::move(serialized), json_listing_content_type);
 	}
 
 	template <class CharSource>
