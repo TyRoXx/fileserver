@@ -1,4 +1,9 @@
 #include "mount.hpp"
+#include <silicium/ptr_observable.hpp>
+#include <silicium/error_or.hpp>
+#include <silicium/connecting_observable.hpp>
+#include <silicium/coroutine.hpp>
+#include <silicium/virtualized_observable.hpp>
 #include <server/path.hpp>
 #include <fuse.h>
 
@@ -6,6 +11,82 @@ namespace fileserver
 {
 	namespace
 	{
+		using file_offset = std::intmax_t;
+
+		struct random_access_file
+		{
+			virtual ~random_access_file();
+			virtual Si::unique_observable<Si::error_or<std::vector<byte>>> read(file_offset begin, file_offset end) = 0;
+		};
+
+		random_access_file::~random_access_file()
+		{
+		}
+
+		struct file_service
+		{
+			virtual ~file_service();
+			virtual Si::unique_observable<Si::error_or<std::unique_ptr<random_access_file>>> open(digest const &name) = 0;
+		};
+
+		file_service::~file_service()
+		{
+		}
+
+		struct http_random_access_file : random_access_file
+		{
+			explicit http_random_access_file(std::unique_ptr<boost::asio::ip::tcp::socket> connection, digest const &name)
+				: connection(std::move(connection))
+				, name(name)
+			{
+			}
+
+			virtual Si::unique_observable<Si::error_or<std::vector<byte>>> read(file_offset begin, file_offset end) SILICIUM_OVERRIDE
+			{
+				throw std::logic_error("todo");
+			}
+
+		private:
+
+			std::unique_ptr<boost::asio::ip::tcp::socket> connection;
+			digest name;
+		};
+
+		struct http_file_service : file_service
+		{
+			explicit http_file_service(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server)
+				: io(&io)
+				, server(server)
+			{
+			}
+
+			virtual Si::unique_observable<Si::error_or<std::unique_ptr<random_access_file>>> open(digest const &name) SILICIUM_OVERRIDE
+			{
+				return Si::erase_unique(Si::make_coroutine<Si::error_or<std::unique_ptr<random_access_file>>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
+			}
+
+		private:
+
+			boost::asio::io_service *io = nullptr;
+			boost::asio::ip::tcp::endpoint server;
+
+			void open_impl(
+				Si::yield_context<Si::error_or<std::unique_ptr<random_access_file>>> yield,
+				digest const &requested_name)
+			{
+				auto socket = Si::make_unique<boost::asio::ip::tcp::socket>(*io);
+				Si::connecting_observable connector(*socket, server);
+				boost::optional<boost::system::error_code> const ec = yield.get_one(connector);
+				assert(ec);
+				if (*ec)
+				{
+					return yield(*ec);
+				}
+				std::unique_ptr<random_access_file> file = Si::make_unique<http_random_access_file>(std::move(socket), requested_name);
+				yield(std::move(file));
+			}
+		};
+
 		char const * const hello_path = "/hello";
 		char const * const hello_str = "Hello, fuse!\n";
 
