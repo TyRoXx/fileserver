@@ -17,7 +17,19 @@ namespace fileserver
 		{
 			bytes.fill(0);
 		}
+
+		template <class InputIterator>
+		explicit fixed_digest(InputIterator from)
+		{
+			std::copy_n(from, bytes.size(), bytes.begin());
+		}
 	};
+
+	template <std::size_t ByteSize>
+	bool operator == (fixed_digest<ByteSize> const &left, fixed_digest<ByteSize> const &right)
+	{
+		return left.bytes == right.bytes;
+	}
 
 	using sha256_digest = fixed_digest<256 / 8>;
 

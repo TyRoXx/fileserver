@@ -4,6 +4,7 @@
 #include <server/digest.hpp>
 #include <boost/container/string.hpp>
 #include <ostream>
+#include <tuple>
 
 namespace fileserver
 {
@@ -26,6 +27,11 @@ namespace fileserver
 		{
 		}
 	};
+
+	inline bool operator == (typed_reference const &left, typed_reference const &right)
+	{
+		return std::tie(left.type, left.referenced) == std::tie(right.type, right.referenced);
+	}
 
 	inline void print(std::ostream &out, typed_reference const &value)
 	{
