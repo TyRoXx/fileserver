@@ -19,8 +19,65 @@
 
 namespace fileserver
 {
+	enum class service_error
+	{
+		file_not_found
+	};
+
+	struct service_error_category : boost::system::error_category
+	{
+		virtual const char *name() const BOOST_SYSTEM_NOEXCEPT SILICIUM_OVERRIDE
+		{
+			return "service error";
+		}
+
+		virtual std::string message(int ev) const SILICIUM_OVERRIDE
+		{
+			switch (ev)
+			{
+			case static_cast<int>(service_error::file_not_found): return "file not found";
+			}
+			SILICIUM_UNREACHABLE();
+		}
+
+		virtual bool equivalent(
+			boost::system::error_code const &code,
+			int condition) const BOOST_SYSTEM_NOEXCEPT SILICIUM_OVERRIDE
+		{
+			boost::ignore_unused_variable_warning(code);
+			boost::ignore_unused_variable_warning(condition);
+			return false;
+		}
+	};
+
+	inline boost::system::error_category const &get_system_error_category()
+	{
+		static service_error_category const instance;
+		return instance;
+	}
+
+	inline boost::system::error_code make_error_code(service_error error)
+	{
+		return boost::system::error_code(static_cast<int>(error), get_system_error_category());
+	}
+}
+
+namespace boost
+{
+	namespace system
+	{
+		template<>
+	    struct is_error_code_enum<fileserver::service_error> : std::true_type
+		{
+		};
+	}
+}
+
+namespace fileserver
+{
 	namespace
 	{
+
 		using file_offset = std::intmax_t;
 
 		struct linear_file
@@ -104,6 +161,11 @@ namespace fileserver
 					throw std::logic_error("todo 1");
 				}
 
+				if (response_header->status != 200)
+				{
+					return yield(boost::system::error_code(service_error::file_not_found));
+				}
+
 				auto content_length_header = response_header->arguments.find("Content-Length");
 				if (content_length_header == response_header->arguments.end())
 				{
@@ -163,7 +225,18 @@ namespace fileserver
 			auto &io = fs->io;
 			fs->worker = std::async(std::launch::async, [&io]()
 			{
-				io.run();
+				for (;;)
+				{
+					try
+					{
+						io.run();
+						break;
+					}
+					catch (...)
+					{
+						continue;
+					}
+				}
 			});
 			fs->root = std::move(root);
 			return fs.release();
@@ -213,44 +286,52 @@ namespace fileserver
 			(void) offset;
 			(void) fi;
 
-			Si::error_or<linear_file> file;
-			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
-			Si::detail::event<Si::std_threading> waiting;
-			waiting.block(Si::transform(fs->backend->open(fs->root), [&file](Si::error_or<linear_file> opened_file)
+			try
 			{
-				file = std::move(opened_file);
-				return Si::nothing();
-			}));
-
-			if (file.is_error())
-			{
-				return -ENOENT;
-			}
-
-			local_yield_context yield_impl;
-			Si::yield_context<Si::nothing> yield(yield_impl);
-			auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(file).get().content, yield));
-			Si::received_from_socket_source content_source(receiving_source);
-			auto parsed = deserialize_json(std::move(content_source));
-			return Si::visit<int>(
-				parsed,
-				[buf, filler](std::unique_ptr<directory_listing> &listing)
-			{
-				filler(buf, ".", NULL, 0);
-				filler(buf, "..", NULL, 0);
-				for (auto const &entry : listing->entries)
+				Si::error_or<linear_file> file;
+				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+				Si::detail::event<Si::std_threading> waiting;
+				waiting.block(Si::transform(fs->backend->open(fs->root), [&file](Si::error_or<linear_file> opened_file)
 				{
-					struct stat s{};
-					s.st_size = 100;
-					s.st_mode = 0777 | __S_IFREG;
-					filler(buf, entry.first.c_str(), &s, 0);
+					file = std::move(opened_file);
+					return Si::nothing();
+				}));
+
+				if (file.is_error())
+				{
+					return -ENOENT;
 				}
-				return 0;
-			},
-				[](std::size_t)
+
+				local_yield_context yield_impl;
+				Si::yield_context<Si::nothing> yield(yield_impl);
+				auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(file).get().content, yield));
+				Si::received_from_socket_source content_source(receiving_source);
+				auto parsed = deserialize_json(std::move(content_source));
+				return Si::visit<int>(
+					parsed,
+					[buf, filler](std::unique_ptr<directory_listing> &listing)
+				{
+					filler(buf, ".", NULL, 0);
+					filler(buf, "..", NULL, 0);
+					for (auto const &entry : listing->entries)
+					{
+						struct stat s{};
+						s.st_size = 100;
+						s.st_mode = 0777 | S_IFREG;
+						s.st_nlink = 1;
+						filler(buf, entry.first.c_str(), &s, 0);
+					}
+					return 0;
+				},
+					[](std::size_t)
+				{
+					return -ENOENT;
+				});
+			}
+			catch (...)
 			{
-				return -ENOENT;
-			});
+				return -EIO;
+			}
 		}
 
 		int hello_open(const char *path, struct fuse_file_info *fi)
