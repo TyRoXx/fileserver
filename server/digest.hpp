@@ -49,6 +49,14 @@ namespace fileserver
 		return std::move(result);
 	}
 
+	template <class InputRange>
+	auto parse_digest(InputRange const &formatted)
+	{
+		using std::begin;
+		using std::end;
+		return parse_digest(begin(formatted), end(formatted));
+	}
+
 	inline std::string format_digest(unknown_digest const &value)
 	{
 		std::string formatted;

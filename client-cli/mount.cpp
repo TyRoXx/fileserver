@@ -4,8 +4,17 @@
 #include <silicium/connecting_observable.hpp>
 #include <silicium/coroutine.hpp>
 #include <silicium/virtualized_observable.hpp>
+#include <silicium/received_from_socket_source.hpp>
+#include <silicium/sending_observable.hpp>
+#include <silicium/virtualized_source.hpp>
+#include <silicium/observable_source.hpp>
+#include <silicium/http/http.hpp>
+#include <silicium/thread.hpp>
+#include <silicium/std_threading.hpp>
 #include <server/path.hpp>
 #include <fuse.h>
+#include <future>
+#include <boost/ref.hpp>
 
 namespace fileserver
 {
@@ -13,44 +22,21 @@ namespace fileserver
 	{
 		using file_offset = std::intmax_t;
 
-		struct random_access_file
+		struct linear_file
 		{
-			virtual ~random_access_file();
-			virtual Si::unique_observable<Si::error_or<std::vector<byte>>> read(file_offset begin, file_offset end) = 0;
+			file_offset size;
+			Si::unique_observable<Si::error_or<Si::incoming_bytes>> content;
 		};
-
-		random_access_file::~random_access_file()
-		{
-		}
 
 		struct file_service
 		{
 			virtual ~file_service();
-			virtual Si::unique_observable<Si::error_or<std::unique_ptr<random_access_file>>> open(digest const &name) = 0;
+			virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) = 0;
 		};
 
 		file_service::~file_service()
 		{
 		}
-
-		struct http_random_access_file : random_access_file
-		{
-			explicit http_random_access_file(std::unique_ptr<boost::asio::ip::tcp::socket> connection, digest const &name)
-				: connection(std::move(connection))
-				, name(name)
-			{
-			}
-
-			virtual Si::unique_observable<Si::error_or<std::vector<byte>>> read(file_offset begin, file_offset end) SILICIUM_OVERRIDE
-			{
-				throw std::logic_error("todo");
-			}
-
-		private:
-
-			std::unique_ptr<boost::asio::ip::tcp::socket> connection;
-			digest name;
-		};
 
 		struct http_file_service : file_service
 		{
@@ -60,9 +46,9 @@ namespace fileserver
 			{
 			}
 
-			virtual Si::unique_observable<Si::error_or<std::unique_ptr<random_access_file>>> open(digest const &name) SILICIUM_OVERRIDE
+			virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) SILICIUM_OVERRIDE
 			{
-				return Si::erase_unique(Si::make_coroutine<Si::error_or<std::unique_ptr<random_access_file>>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
+				return Si::erase_unique(Si::make_coroutine<Si::error_or<linear_file>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
 			}
 
 		private:
@@ -71,24 +57,121 @@ namespace fileserver
 			boost::asio::ip::tcp::endpoint server;
 
 			void open_impl(
-				Si::yield_context<Si::error_or<std::unique_ptr<random_access_file>>> yield,
-				digest const &requested_name)
+				Si::yield_context<Si::error_or<linear_file>> yield,
+				unknown_digest const &requested_name)
 			{
-				auto socket = Si::make_unique<boost::asio::ip::tcp::socket>(*io);
+				auto socket = std::make_shared<boost::asio::ip::tcp::socket>(*io);
 				Si::connecting_observable connector(*socket, server);
-				boost::optional<boost::system::error_code> const ec = yield.get_one(connector);
-				assert(ec);
-				if (*ec)
 				{
-					return yield(*ec);
+					boost::optional<boost::system::error_code> const ec = yield.get_one(connector);
+					assert(ec);
+					if (*ec)
+					{
+						return yield(*ec);
+					}
 				}
-				std::unique_ptr<random_access_file> file = Si::make_unique<http_random_access_file>(std::move(socket), requested_name);
+
+				std::vector<char> request_buffer;
+				{
+					Si::http::request_header request;
+					request.http_version = "HTTP/1.0";
+					request.method = "GET";
+					request.path = "/";
+					encode_ascii_hex_digits(requested_name.begin(), requested_name.end(), std::back_inserter(request.path));
+					request.arguments["Host"] = server.address().to_string();
+					auto request_sink = Si::make_container_sink(request_buffer);
+					Si::http::write_header(request_sink, request);
+				}
+				Si::sending_observable sending(*socket, boost::make_iterator_range(request_buffer.data(), request_buffer.data() + request_buffer.size()));
+				{
+					boost::optional<Si::error_or<std::size_t>> const ec = yield.get_one(sending);
+					assert(ec);
+					if (ec->error())
+					{
+						return yield(*ec->error());
+					}
+					assert(ec->get() == request_buffer.size());
+				}
+
+				std::array<char, 8192> buffer;
+				Si::socket_observable receiving(*socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+				auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(receiving), yield));
+				Si::received_from_socket_source response_source(receiving_source);
+				boost::optional<Si::http::response_header> const response_header = Si::http::parse_response_header(response_source);
+				if (!response_header)
+				{
+					throw std::logic_error("todo 1");
+				}
+
+				auto content_length_header = response_header->arguments.find("Content-Length");
+				if (content_length_header == response_header->arguments.end())
+				{
+					throw std::logic_error("todo 2");
+				}
+
+				std::vector<byte> first_part(response_source.buffered().begin, response_source.buffered().end);
+				file_offset const file_size = boost::lexical_cast<file_offset>(content_length_header->second);
+				linear_file file{file_size, Si::erase_unique(Si::make_coroutine<Si::error_or<Si::incoming_bytes>>(
+					[first_part, socket, file_size]
+						(Si::yield_context<Si::error_or<Si::incoming_bytes>> yield)
+					{
+						yield(Si::incoming_bytes(
+							reinterpret_cast<char const *>(first_part.data()),
+							reinterpret_cast<char const *>(first_part.data() + first_part.size())));
+						file_offset receive_counter = first_part.size();
+						std::array<char, 8192> buffer;
+						Si::socket_observable receiving(*socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+						while (receive_counter < file_size)
+						{
+							auto piece = yield.get_one(receiving);
+							if (!piece)
+							{
+								break;
+							}
+							if (!piece->is_error())
+							{
+								receive_counter += piece->get().size();
+							}
+							yield(*piece);
+						}
+					}))};
 				yield(std::move(file));
 			}
 		};
 
+		struct file_system
+		{
+			boost::asio::io_service io;
+			std::unique_ptr<file_service> backend;
+			std::future<void> worker;
+			boost::optional<boost::asio::io_service::work> keep_running;
+			unknown_digest root;
+		};
+
 		char const * const hello_path = "/hello";
 		char const * const hello_str = "Hello, fuse!\n";
+
+		unknown_digest root;
+
+		void *init(struct fuse_conn_info *conn)
+		{
+			assert(!root.empty());
+			auto fs = Si::make_unique<file_system>();
+			fs->backend = Si::make_unique<http_file_service>(fs->io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
+			fs->keep_running = boost::in_place(boost::ref(fs->io));
+			auto &io = fs->io;
+			fs->worker = std::async(std::launch::async, [&io]()
+			{
+				io.run();
+			});
+			fs->root = std::move(root);
+			return fs.release();
+		}
+
+		void destroy(void *private_data)
+		{
+			std::unique_ptr<file_system>(static_cast<file_system *>(private_data));
+		}
 
 		int hello_getattr(const char *path, struct stat *stbuf)
 		{
@@ -108,11 +191,25 @@ namespace fileserver
 			return res;
 		}
 
-		static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+		int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 					 off_t offset, struct fuse_file_info *fi)
 		{
 			(void) offset;
 			(void) fi;
+
+			Si::error_or<linear_file> file;
+			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+			Si::detail::event<Si::std_threading> waiting;
+			waiting.block(Si::transform(fs->backend->open(fs->root), [&file](Si::error_or<linear_file> opened_file)
+			{
+				file = std::move(opened_file);
+				return Si::nothing();
+			}));
+
+			if (file.is_error())
+			{
+				return -ENOENT;
+			}
 
 			if (strcmp(path, "/") != 0)
 				return -ENOENT;
@@ -124,7 +221,7 @@ namespace fileserver
 			return 0;
 		}
 
-		static int hello_open(const char *path, struct fuse_file_info *fi)
+		int hello_open(const char *path, struct fuse_file_info *fi)
 		{
 			if (strcmp(path, hello_path) != 0)
 				return -ENOENT;
@@ -135,7 +232,7 @@ namespace fileserver
 			return 0;
 		}
 
-		static int hello_read(const char *path, char *buf, size_t size, off_t offset,
+		int hello_read(const char *path, char *buf, size_t size, off_t offset,
 					  struct fuse_file_info *fi)
 		{
 			size_t len;
@@ -178,7 +275,7 @@ namespace fileserver
 		};
 	}
 
-	void mount_directory(fileserver::unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
+	void mount_directory(unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
 	{
 		chan_deleter deleter;
 		deleter.mount_point = fileserver::path(mount_point);
@@ -189,10 +286,13 @@ namespace fileserver
 			throw std::runtime_error("fuse_mount failure");
 		}
 		fuse_operations operations{};
+		operations.init = init;
+		operations.destroy = destroy;
 		operations.getattr = hello_getattr;
 		operations.readdir = hello_readdir;
 		operations.open = hello_open;
 		operations.read = hello_read;
+		root = root_digest;
 		user_data_for_fuse user_data;
 		std::unique_ptr<fuse, fuse_deleter> const f(fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
 		if (!f)
