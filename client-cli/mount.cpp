@@ -12,6 +12,7 @@
 #include <silicium/thread.hpp>
 #include <silicium/std_threading.hpp>
 #include <server/path.hpp>
+#include <server/directory_listing.hpp>
 #include <fuse.h>
 #include <future>
 #include <boost/ref.hpp>
@@ -191,6 +192,21 @@ namespace fileserver
 			return res;
 		}
 
+		struct local_yield_context : Si::detail::yield_context_impl<Si::nothing>
+		{
+			virtual void push_result(Si::nothing result) SILICIUM_OVERRIDE
+			{
+				boost::ignore_unused(result);
+				SILICIUM_UNREACHABLE();
+			}
+
+			virtual void get_one(Si::observable<Si::nothing> &target) SILICIUM_OVERRIDE
+			{
+				Si::detail::event<Si::std_threading> waiting;
+				waiting.block(Si::ref(target));
+			}
+		};
+
 		int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 					 off_t offset, struct fuse_file_info *fi)
 		{
@@ -211,14 +227,30 @@ namespace fileserver
 				return -ENOENT;
 			}
 
-			if (strcmp(path, "/") != 0)
+			local_yield_context yield_impl;
+			Si::yield_context<Si::nothing> yield(yield_impl);
+			auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(file).get().content, yield));
+			Si::received_from_socket_source content_source(receiving_source);
+			auto parsed = deserialize_json(std::move(content_source));
+			return Si::visit<int>(
+				parsed,
+				[buf, filler](std::unique_ptr<directory_listing> &listing)
+			{
+				filler(buf, ".", NULL, 0);
+				filler(buf, "..", NULL, 0);
+				for (auto const &entry : listing->entries)
+				{
+					struct stat s{};
+					s.st_size = 100;
+					s.st_mode = 0777 | __S_IFREG;
+					filler(buf, entry.first.c_str(), &s, 0);
+				}
+				return 0;
+			},
+				[](std::size_t)
+			{
 				return -ENOENT;
-
-			filler(buf, ".", NULL, 0);
-			filler(buf, "..", NULL, 0);
-			filler(buf, hello_path + 1, NULL, 0);
-
-			return 0;
+			});
 		}
 
 		int hello_open(const char *path, struct fuse_file_info *fi)
