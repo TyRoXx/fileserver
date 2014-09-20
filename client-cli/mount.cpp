@@ -284,55 +284,61 @@ namespace fileserver
 			return deserialize_json(std::move(content_source));
 		}
 
+		boost::optional<typed_reference> resolve_path(std::vector<std::string> const &path_components, digest const &root, file_service &service)
+		{
+			content_type last_type = json_listing_content_type;
+			digest last_digest = root;
+			for (auto component = path_components.begin() + 1; component != path_components.end(); ++component)
+			{
+				auto file = read_file(service, to_unknown_digest(last_digest));
+				if (file.is_error())
+				{
+					return boost::none;
+				}
+				auto parsed = parse_directory_listing(std::move(file).get());
+				if (!Si::visit<bool>(
+					parsed,
+					[&last_digest, &last_type, component](std::unique_ptr<directory_listing> const &listing)
+				{
+					auto found = listing->entries.find(*component);
+					if (found == listing->entries.end())
+					{
+						return false;
+					}
+					last_type = found->second.type;
+					last_digest = found->second.referenced;
+					return true;
+				},
+					[](std::size_t)
+				{
+					return false;
+				}))
+				{
+					return boost::none;
+				}
+			}
+			return typed_reference(std::move(last_type), last_digest);
+		}
+
 		int hello_getattr(const char *path, struct stat *stbuf)
 		{
 			memset(stbuf, 0, sizeof(*stbuf));
 			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
 			std::vector<std::string> path_components;
 			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
-
-			content_type last_type = json_listing_content_type;
+			auto const file_info = resolve_path(path_components, *to_sha256_digest(fs->root), *fs->backend);
+			if (!file_info)
 			{
-				unknown_digest current_directory = fs->root;
-				for (auto component = path_components.begin() + 1; component != path_components.end(); ++component)
-				{
-					auto file = read_file(*fs->backend, current_directory);
-					if (file.is_error())
-					{
-						return -EIO;
-					}
-					auto parsed = parse_directory_listing(std::move(file).get());
-					if (!Si::visit<bool>(
-						parsed,
-						[&current_directory, &last_type, component](std::unique_ptr<directory_listing> const &listing)
-					{
-						auto found = listing->entries.find(*component);
-						if (found == listing->entries.end())
-						{
-							return false;
-						}
-						last_type = found->second.type;
-						current_directory = to_unknown_digest(found->second.referenced);
-						return true;
-					},
-						[](std::size_t)
-					{
-						return false;
-					}))
-					{
-						return -EIO;
-					}
-				}
+				return -ENOENT;
 			}
-
-			if (last_type == blob_content_type)
+			if (file_info->type == blob_content_type)
 			{
 				stbuf->st_mode = S_IFREG | 0444;
 				stbuf->st_nlink = 1;
 				stbuf->st_size = 1;
 				return 0;
 			}
-			else if (last_type == json_listing_content_type)
+			else if (file_info->type == json_listing_content_type)
 			{
 				stbuf->st_mode = S_IFDIR | 0555;
 				stbuf->st_nlink = 2;

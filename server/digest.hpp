@@ -63,6 +63,15 @@ namespace fileserver
 		encode_ascii_hex_digits(value.begin(), value.end(), std::back_inserter(formatted));
 		return formatted;
 	}
+
+	inline boost::optional<sha256_digest> to_sha256_digest(unknown_digest const &any)
+	{
+		if (any.size() == sha256_digest().bytes.size())
+		{
+			return sha256_digest(any.begin());
+		}
+		return boost::none;
+	}
 }
 
 #endif
