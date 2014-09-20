@@ -16,6 +16,7 @@
 #include <fuse.h>
 #include <future>
 #include <boost/ref.hpp>
+#include <boost/algorithm/string/split.hpp>
 
 namespace fileserver
 {
@@ -247,22 +248,16 @@ namespace fileserver
 			std::unique_ptr<file_system>(static_cast<file_system *>(private_data));
 		}
 
-		int hello_getattr(const char *path, struct stat *stbuf)
+		Si::error_or<linear_file> read_file(file_service &service, unknown_digest const &name)
 		{
-			int res = 0;
-
-			memset(stbuf, 0, sizeof(struct stat));
-			if (strcmp(path, "/") == 0) {
-				stbuf->st_mode = S_IFDIR | 0755;
-				stbuf->st_nlink = 2;
-			} else if (strcmp(path, hello_path) == 0) {
-				stbuf->st_mode = S_IFREG | 0444;
-				stbuf->st_nlink = 1;
-				stbuf->st_size = strlen(hello_str);
-			} else
-				res = -ENOENT;
-
-			return res;
+			Si::error_or<linear_file> file;
+			Si::detail::event<Si::std_threading> waiting;
+			waiting.block(Si::transform(service.open(name), [&file](Si::error_or<linear_file> opened_file)
+			{
+				file = std::move(opened_file);
+				return Si::nothing();
+			}));
+			return file;
 		}
 
 		struct local_yield_context : Si::detail::yield_context_impl<Si::nothing>
@@ -280,6 +275,73 @@ namespace fileserver
 			}
 		};
 
+		auto parse_directory_listing(linear_file file)
+		{
+			local_yield_context yield_impl;
+			Si::yield_context<Si::nothing> yield(yield_impl);
+			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(file.content), yield));
+			Si::received_from_socket_source content_source(receiving_source);
+			return deserialize_json(std::move(content_source));
+		}
+
+		int hello_getattr(const char *path, struct stat *stbuf)
+		{
+			memset(stbuf, 0, sizeof(*stbuf));
+			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+			std::vector<std::string> path_components;
+			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
+
+			content_type last_type = json_listing_content_type;
+			{
+				unknown_digest current_directory = fs->root;
+				for (auto component = path_components.begin() + 1; component != path_components.end(); ++component)
+				{
+					auto file = read_file(*fs->backend, current_directory);
+					if (file.is_error())
+					{
+						return -EIO;
+					}
+					auto parsed = parse_directory_listing(std::move(file).get());
+					if (!Si::visit<bool>(
+						parsed,
+						[&current_directory, &last_type, component](std::unique_ptr<directory_listing> const &listing)
+					{
+						auto found = listing->entries.find(*component);
+						if (found == listing->entries.end())
+						{
+							return false;
+						}
+						last_type = found->second.type;
+						current_directory = to_unknown_digest(found->second.referenced);
+						return true;
+					},
+						[](std::size_t)
+					{
+						return false;
+					}))
+					{
+						return -EIO;
+					}
+				}
+			}
+
+			if (last_type == blob_content_type)
+			{
+				stbuf->st_mode = S_IFREG | 0444;
+				stbuf->st_nlink = 1;
+				stbuf->st_size = 1;
+				return 0;
+			}
+			else if (last_type == json_listing_content_type)
+			{
+				stbuf->st_mode = S_IFDIR | 0555;
+				stbuf->st_nlink = 2;
+				return 0;
+			}
+
+			return -ENOENT;
+		}
+
 		int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 					 off_t offset, struct fuse_file_info *fi)
 		{
@@ -288,25 +350,14 @@ namespace fileserver
 
 			try
 			{
-				Si::error_or<linear_file> file;
 				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
-				Si::detail::event<Si::std_threading> waiting;
-				waiting.block(Si::transform(fs->backend->open(fs->root), [&file](Si::error_or<linear_file> opened_file)
-				{
-					file = std::move(opened_file);
-					return Si::nothing();
-				}));
-
+				auto file = read_file(*fs->backend, fs->root);
 				if (file.is_error())
 				{
 					return -ENOENT;
 				}
 
-				local_yield_context yield_impl;
-				Si::yield_context<Si::nothing> yield(yield_impl);
-				auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(file).get().content, yield));
-				Si::received_from_socket_source content_source(receiving_source);
-				auto parsed = deserialize_json(std::move(content_source));
+				auto parsed = parse_directory_listing(std::move(file).get());
 				return Si::visit<int>(
 					parsed,
 					[buf, filler](std::unique_ptr<directory_listing> &listing)
