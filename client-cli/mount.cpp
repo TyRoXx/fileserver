@@ -14,10 +14,13 @@
 #include <silicium/to_unique.hpp>
 #include <server/path.hpp>
 #include <server/directory_listing.hpp>
-#include <fuse.h>
 #include <future>
 #include <boost/ref.hpp>
 #include <boost/algorithm/string/split.hpp>
+
+#ifdef __linux__
+#	include <fuse.h>
+#endif
 
 namespace fileserver
 {
@@ -79,7 +82,6 @@ namespace fileserver
 {
 	namespace
 	{
-
 		using file_offset = std::intmax_t;
 
 		struct linear_file
@@ -227,6 +229,7 @@ namespace fileserver
 
 		unknown_digest root;
 
+#ifdef __linux__
 		void *init(struct fuse_conn_info *conn)
 		{
 			assert(!root.empty());
@@ -540,10 +543,12 @@ namespace fileserver
 				fuse_destroy(f);
 			}
 		};
+#endif
 	}
 
 	void mount_directory(unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
 	{
+#ifdef __linux__
 		chan_deleter deleter;
 		deleter.mount_point = fileserver::path(mount_point);
 		fuse_args args{};
@@ -572,5 +577,6 @@ namespace fileserver
 		chan.release();
 
 		fuse_loop(f.get());
+#endif
 	}
 }

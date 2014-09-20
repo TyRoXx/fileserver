@@ -12,7 +12,6 @@
 #include <boost/program_options.hpp>
 #include <boost/asio/io_service.hpp>
 #include <iostream>
-#include <fuse.h>
 
 namespace
 {

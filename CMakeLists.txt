@@ -52,12 +52,14 @@ include_directories(SYSTEM ${SILICIUM_INCLUDE_DIR})
 
 include_directories(SYSTEM "dependencies/rapidjson/include")
 
-find_package(FUSE REQUIRED)
-if(FUSE_FOUND)
-	#fuse wants this to be defined
-	add_definitions("-D_FILE_OFFSET_BITS=64")
-	add_definitions("-DFUSE_USE_VERSION=26")
-	include_directories(${FUSE_INCLUDE_DIRS})
+if(UNIX)
+	find_package(FUSE REQUIRED)
+	if(FUSE_FOUND)
+		#fuse wants this to be defined
+		add_definitions("-D_FILE_OFFSET_BITS=64")
+		add_definitions("-DFUSE_USE_VERSION=26")
+		include_directories(${FUSE_INCLUDE_DIRS})
+	endif()
 endif()
 
 include_directories(".")

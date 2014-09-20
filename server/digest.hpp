@@ -11,7 +11,7 @@ namespace fileserver
 	using digest = Si::fast_variant<sha256_digest>;
 	using unknown_digest = boost::container::basic_string<byte>;
 
-	inline auto get_digest_digits(digest const &original)
+	inline boost::iterator_range<byte const *> get_digest_digits(digest const &original)
 	{
 		return Si::visit<boost::iterator_range<byte const *>>(
 			original,
