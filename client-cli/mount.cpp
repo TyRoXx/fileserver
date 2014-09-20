@@ -92,6 +92,7 @@ namespace fileserver
 		{
 			virtual ~file_service();
 			virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) = 0;
+			virtual Si::unique_observable<Si::error_or<file_offset>> size(unknown_digest const &name) = 0;
 		};
 
 		file_service::~file_service()
@@ -109,6 +110,11 @@ namespace fileserver
 			virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) SILICIUM_OVERRIDE
 			{
 				return Si::erase_unique(Si::make_coroutine<Si::error_or<linear_file>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
+			}
+
+			virtual Si::unique_observable<Si::error_or<file_offset>> size(unknown_digest const &name) SILICIUM_OVERRIDE
+			{
+				throw std::logic_error("todo");
 			}
 
 		private:
@@ -332,13 +338,23 @@ namespace fileserver
 			return path_components;
 		}
 
-		bool fill_stat(typed_reference const &file, struct stat &destination)
+		bool fill_stat(typed_reference const &file, struct stat &destination, file_service &service)
 		{
 			if (file.type == blob_content_type)
 			{
 				destination.st_mode = S_IFREG | 0444;
 				destination.st_nlink = 1;
-				destination.st_size = 1;
+
+				local_yield_context yield_impl;
+				Si::yield_context<Si::nothing> yield(yield_impl);
+				auto future_size = service.size(to_unknown_digest(file.referenced));
+				boost::optional<Si::error_or<file_offset>> const size = yield.get_one(future_size);
+				assert(size);
+				if (size->is_error())
+				{
+					return false;
+				}
+				destination.st_size = size->get();
 				return true;
 			}
 			else if (file.type == json_listing_content_type)
@@ -359,7 +375,7 @@ namespace fileserver
 			{
 				return -ENOENT;
 			}
-			if (fill_stat(*file_info, *stbuf))
+			if (fill_stat(*file_info, *stbuf, *fs->backend))
 			{
 				return 0;
 			}
@@ -387,14 +403,14 @@ namespace fileserver
 				auto parsed = parse_directory_listing(std::move(file).get());
 				return Si::visit<int>(
 					parsed,
-					[buf, filler](std::unique_ptr<directory_listing> &listing)
+					[buf, filler, fs](std::unique_ptr<directory_listing> &listing)
 				{
 					filler(buf, ".", NULL, 0);
 					filler(buf, "..", NULL, 0);
 					for (auto const &entry : listing->entries)
 					{
 						struct stat s{};
-						if (fill_stat(entry.second, s))
+						if (fill_stat(entry.second, s, *fs->backend))
 						{
 							filler(buf, entry.first.c_str(), &s, 0);
 						}
