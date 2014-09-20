@@ -320,14 +320,19 @@ namespace fileserver
 			return typed_reference(std::move(last_type), last_digest);
 		}
 
+		std::vector<std::string> split_path(char const *path)
+		{
+			std::vector<std::string> path_components;
+			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
+			path_components.erase(std::remove(path_components.begin(), path_components.end(), std::string()), path_components.end());
+			return path_components;
+		}
+
 		int hello_getattr(const char *path, struct stat *stbuf)
 		{
 			memset(stbuf, 0, sizeof(*stbuf));
 			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
-			std::vector<std::string> path_components;
-			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
-			path_components.erase(std::remove(path_components.begin(), path_components.end(), std::string()), path_components.end());
-			auto const file_info = resolve_path(path_components, *to_sha256_digest(fs->root), *fs->backend);
+			auto const file_info = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
 			if (!file_info)
 			{
 				return -ENOENT;
@@ -358,7 +363,13 @@ namespace fileserver
 			try
 			{
 				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
-				auto file = read_file(*fs->backend, fs->root);
+				auto const resolved = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
+				if (!resolved)
+				{
+					return -ENOENT;
+				}
+
+				auto file = read_file(*fs->backend, to_unknown_digest(resolved->referenced));
 				if (file.is_error())
 				{
 					return -ENOENT;
