@@ -328,6 +328,24 @@ namespace fileserver
 			return path_components;
 		}
 
+		bool fill_stat(typed_reference const &file, struct stat &destination)
+		{
+			if (file.type == blob_content_type)
+			{
+				destination.st_mode = S_IFREG | 0444;
+				destination.st_nlink = 1;
+				destination.st_size = 1;
+				return true;
+			}
+			else if (file.type == json_listing_content_type)
+			{
+				destination.st_mode = S_IFDIR | 0555;
+				destination.st_nlink = 2;
+				return true;
+			}
+			return false;
+		}
+
 		int hello_getattr(const char *path, struct stat *stbuf)
 		{
 			memset(stbuf, 0, sizeof(*stbuf));
@@ -337,20 +355,10 @@ namespace fileserver
 			{
 				return -ENOENT;
 			}
-			if (file_info->type == blob_content_type)
+			if (fill_stat(*file_info, *stbuf))
 			{
-				stbuf->st_mode = S_IFREG | 0444;
-				stbuf->st_nlink = 1;
-				stbuf->st_size = 1;
 				return 0;
 			}
-			else if (file_info->type == json_listing_content_type)
-			{
-				stbuf->st_mode = S_IFDIR | 0555;
-				stbuf->st_nlink = 2;
-				return 0;
-			}
-
 			return -ENOENT;
 		}
 
@@ -385,10 +393,10 @@ namespace fileserver
 					for (auto const &entry : listing->entries)
 					{
 						struct stat s{};
-						s.st_size = 100;
-						s.st_mode = 0777 | S_IFREG;
-						s.st_nlink = 1;
-						filler(buf, entry.first.c_str(), &s, 0);
+						if (fill_stat(entry.second, s))
+						{
+							filler(buf, entry.first.c_str(), &s, 0);
+						}
 					}
 					return 0;
 				},
