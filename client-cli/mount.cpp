@@ -11,6 +11,7 @@
 #include <silicium/http/http.hpp>
 #include <silicium/thread.hpp>
 #include <silicium/std_threading.hpp>
+#include <silicium/to_unique.hpp>
 #include <server/path.hpp>
 #include <server/directory_listing.hpp>
 #include <fuse.h>
@@ -365,9 +366,6 @@ namespace fileserver
 		int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 					 off_t offset, struct fuse_file_info *fi)
 		{
-			(void) offset;
-			(void) fi;
-
 			try
 			{
 				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
@@ -413,13 +411,46 @@ namespace fileserver
 
 		int hello_open(const char *path, struct fuse_file_info *fi)
 		{
-			if (strcmp(path, hello_path) != 0)
-				return -ENOENT;
-
-			if ((fi->flags & 3) != O_RDONLY)
+			if ((fi->flags & 3) != O_RDONLY) //the files are currently read-only
+			{
 				return -EACCES;
+			}
 
-			return 0;
+			try
+			{
+				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+				auto const resolved = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
+				if (!resolved)
+				{
+					return -ENOENT;
+				}
+				if (resolved->type == "blob")
+				{
+					auto file = read_file(*fs->backend, to_unknown_digest(resolved->referenced));
+					if (file.is_error())
+					{
+						return -EIO;
+					}
+
+					auto file_ptr = Si::to_unique(std::move(file.get()));
+					fi->fh = reinterpret_cast<std::uintptr_t>(file_ptr.release());
+					return 0;
+				}
+				else
+				{
+					return -ENOTSUP;
+				}
+			}
+			catch (...)
+			{
+				return -EIO;
+			}
+		}
+
+		int release(const char *path, struct fuse_file_info *fi)
+		{
+			std::unique_ptr<linear_file>(reinterpret_cast<linear_file *>(fi->fh));
+			return 0; //ignored by FUSE
 		}
 
 		int hello_read(const char *path, char *buf, size_t size, off_t offset,
@@ -481,6 +512,7 @@ namespace fileserver
 		operations.getattr = hello_getattr;
 		operations.readdir = hello_readdir;
 		operations.open = hello_open;
+		operations.release = release;
 		operations.read = hello_read;
 		root = root_digest;
 		user_data_for_fuse user_data;
