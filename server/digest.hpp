@@ -50,7 +50,7 @@ namespace fileserver
 	}
 
 	template <class InputRange>
-	auto parse_digest(InputRange const &formatted)
+	boost::optional<unknown_digest> parse_digest(InputRange const &formatted)
 	{
 		using std::begin;
 		using std::end;

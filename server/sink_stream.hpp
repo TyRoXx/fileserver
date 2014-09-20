@@ -68,6 +68,9 @@ namespace fileserver
 
 	template <class Sink>
 	auto make_sink_stream(Sink &&sink)
+#if !SILICIUM_COMPILER_HAS_AUTO_RETURN_TYPE
+		-> sink_stream<typename std::decay<Sink>::type>
+#endif
 	{
 		return sink_stream<typename std::decay<Sink>::type>(std::forward<Sink>(sink));
 	}

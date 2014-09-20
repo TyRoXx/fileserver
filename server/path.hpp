@@ -1,6 +1,7 @@
 #ifndef FILESERVER_PATH_HPP
 #define FILESERVER_PATH_HPP
 
+#include <silicium/config.hpp>
 #include <boost/container/string.hpp>
 #include <boost/filesystem/path.hpp>
 
@@ -8,6 +9,8 @@ namespace fileserver
 {
 	struct path
 	{
+		using value_type = boost::filesystem::path::value_type;
+
 		path() BOOST_NOEXCEPT
 		{
 		}
@@ -17,14 +20,34 @@ namespace fileserver
 		{
 		}
 
+#if SILICIUM_COMPILER_GENERATES_MOVES
 		path(path const &) = default;
 		path(path &&) BOOST_NOEXCEPT = default;
 		path &operator = (path const &) = default;
+#else
+		path(path const &other)
+			: characters(other.characters)
+		{
+		}
+
+		path(path &&other) BOOST_NOEXCEPT
+			: characters(std::move(other.characters))
+		{
+		}
+
+		path &operator = (path const &other)
+		{
+			characters = other.characters;
+			return *this;
+		}
+#endif
 
 		path &operator = (path &&other) BOOST_NOEXCEPT
 		{
+#ifndef _MSC_VER
 			//for unknown reasons, noexcept = default does not work for the move-assignment operator in GCC 4.8
 			BOOST_STATIC_ASSERT(BOOST_NOEXCEPT_EXPR(characters = std::move(other.characters)));
+#endif
 			characters = std::move(other.characters);
 			return *this;
 		}
@@ -34,14 +57,14 @@ namespace fileserver
 			return boost::filesystem::path(characters.begin(), characters.end());
 		}
 
-		char const *c_str() const BOOST_NOEXCEPT
+		value_type const *c_str() const BOOST_NOEXCEPT
 		{
 			return characters.c_str();
 		}
 
 	private:
 
-		boost::container::basic_string<boost::filesystem::path::value_type> characters;
+		boost::container::basic_string<value_type> characters;
 	};
 }
 

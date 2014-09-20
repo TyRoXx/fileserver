@@ -85,6 +85,9 @@ namespace fileserver
 
 	template <class Source>
 	auto make_source_stream(Source &&source)
+#if !SILICIUM_COMPILER_HAS_AUTO_RETURN_TYPE
+		-> source_stream<typename std::decay<Source>::type>
+#endif
 	{
 		return source_stream<typename std::decay<Source>::type>(std::forward<Source>(source));
 	}

@@ -9,7 +9,7 @@
 #include <silicium/file_source.hpp>
 #include <silicium/single_source.hpp>
 #include <silicium/transforming_source.hpp>
-#include <silicium/linux/open.hpp>
+#include <silicium/open.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <sys/stat.h>
 
@@ -17,14 +17,24 @@ namespace fileserver
 {
 	namespace detail
 	{
-		inline Si::error_or<boost::uint64_t> file_size(int file)
+		inline Si::error_or<boost::uint64_t> file_size(Si::native_file_handle file)
 		{
+#ifdef _WIN32
+			LARGE_INTEGER size;
+			if (!GetFileSizeEx(file, &size))
+			{
+				return boost::system::error_code(GetLastError(), boost::system::system_category());
+			}
+			assert(size.QuadPart >= 0);
+			return static_cast<boost::uint64_t>(size.QuadPart);
+#else
 			struct stat buffer;
 			if (fstat(file, &buffer) < 0)
 			{
 				return boost::system::error_code(errno, boost::system::system_category());
 			}
 			return static_cast<boost::uint64_t>(buffer.st_size);
+#endif
 		}
 
 		inline Si::error_or<std::pair<typed_reference, location>> hash_file(boost::filesystem::path const &file)
