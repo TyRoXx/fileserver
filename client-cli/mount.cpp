@@ -288,7 +288,7 @@ namespace fileserver
 		{
 			content_type last_type = json_listing_content_type;
 			digest last_digest = root;
-			for (auto component = path_components.begin() + 1; component != path_components.end(); ++component)
+			for (auto component = path_components.begin(); component != path_components.end(); ++component)
 			{
 				auto file = read_file(service, to_unknown_digest(last_digest));
 				if (file.is_error())
@@ -326,6 +326,7 @@ namespace fileserver
 			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
 			std::vector<std::string> path_components;
 			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
+			path_components.erase(std::remove(path_components.begin(), path_components.end(), std::string()), path_components.end());
 			auto const file_info = resolve_path(path_components, *to_sha256_digest(fs->root), *fs->backend);
 			if (!file_info)
 			{
