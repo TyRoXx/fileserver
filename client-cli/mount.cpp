@@ -180,9 +180,12 @@ namespace fileserver
 					[first_part, socket, file_size]
 						(Si::yield_context<Si::error_or<Si::incoming_bytes>> yield)
 					{
-						yield(Si::incoming_bytes(
-							reinterpret_cast<char const *>(first_part.data()),
-							reinterpret_cast<char const *>(first_part.data() + first_part.size())));
+						if (!first_part.empty())
+						{
+							yield(Si::incoming_bytes(
+								reinterpret_cast<char const *>(first_part.data()),
+								reinterpret_cast<char const *>(first_part.data() + first_part.size())));
+						}
 						file_offset receive_counter = first_part.size();
 						std::array<char, 8192> buffer;
 						Si::socket_observable receiving(*socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
@@ -409,6 +412,18 @@ namespace fileserver
 			}
 		}
 
+		struct open_file
+		{
+			linear_file source;
+			std::vector<char> buffer;
+			file_offset already_read = 0;
+
+			explicit open_file(linear_file source)
+				: source(std::move(source))
+			{
+			}
+		};
+
 		int hello_open(const char *path, struct fuse_file_info *fi)
 		{
 			if ((fi->flags & 3) != O_RDONLY) //the files are currently read-only
@@ -432,7 +447,7 @@ namespace fileserver
 						return -EIO;
 					}
 
-					auto file_ptr = Si::to_unique(std::move(file.get()));
+					auto file_ptr = Si::make_unique<open_file>(std::move(file.get()));
 					fi->fh = reinterpret_cast<std::uintptr_t>(file_ptr.release());
 					return 0;
 				}
@@ -449,27 +464,42 @@ namespace fileserver
 
 		int release(const char *path, struct fuse_file_info *fi)
 		{
-			std::unique_ptr<linear_file>(reinterpret_cast<linear_file *>(fi->fh));
+			std::unique_ptr<open_file>(reinterpret_cast<open_file *>(fi->fh));
 			return 0; //ignored by FUSE
 		}
 
 		int hello_read(const char *path, char *buf, size_t size, off_t offset,
 					  struct fuse_file_info *fi)
 		{
-			size_t len;
-			(void) fi;
-			if(strcmp(path, hello_path) != 0)
-				return -ENOENT;
-
-			len = strlen(hello_str);
-			if (static_cast<size_t>(offset) < len) {
-				if (offset + size > len)
-					size = len - offset;
-				memcpy(buf, hello_str + offset, size);
-			} else
-				size = 0;
-
-			return static_cast<int>(size);
+			open_file &file = *reinterpret_cast<open_file *>(fi->fh);
+			if (file.already_read != offset)
+			{
+				return -EIO;
+			}
+			if (file.buffer.empty())
+			{
+				local_yield_context yield_impl;
+				Si::yield_context<Si::nothing> yield(yield_impl);
+				boost::optional<Si::error_or<Si::incoming_bytes>> const piece = yield.get_one(file.source.content);
+				assert(piece);
+				if (piece->is_error())
+				{
+					return -EIO;
+				}
+				std::size_t const reading = std::min(size, (*piece)->size());
+				std::copy((*piece)->begin, (*piece)->begin + reading, buf);
+				file.already_read += reading;
+				file.buffer.assign((*piece)->begin + reading, (*piece)->end);
+				return reading; //TODO fix warning
+			}
+			else
+			{
+				std::size_t const copied = std::min(size, file.buffer.size());
+				std::copy(file.buffer.begin(), file.buffer.begin() + copied, buf);
+				file.already_read += copied;
+				file.buffer.erase(file.buffer.begin(), file.buffer.begin() + copied);
+				return copied;
+			}
 		}
 
 		struct user_data_for_fuse
