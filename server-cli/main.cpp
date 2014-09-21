@@ -93,7 +93,7 @@ namespace fileserver
 
 	template <class MakeSender>
 	void respond(
-		Si::yield_context<Si::nothing> &yield,
+		Si::push_context<Si::nothing> &yield,
 		MakeSender const &make_sender,
 		Si::http::request_header const &header,
 		file_repository const &repository)
@@ -140,7 +140,7 @@ namespace fileserver
 			}
 		}
 
-		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::yield_context<std::vector<char>> &yield)
+		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield)
 		{
 			yield(Si::visit<std::vector<char>>(
 				found_file,
@@ -173,7 +173,7 @@ namespace fileserver
 
 	template <class ReceiveObservable, class MakeSender, class Shutdown>
 	void serve_client(
-		Si::yield_context<Si::nothing> &yield,
+		Si::push_context<Si::nothing> &yield,
 		ReceiveObservable &receive,
 		MakeSender const &make_sender,
 		Shutdown const &shutdown,
@@ -217,7 +217,7 @@ namespace fileserver
 		std::cerr << "\n";
 		file_repository const &files = scanned.first;
 
-		auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::yield_context<session_handle> &yield)
+		auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::push_context<session_handle> &yield)
 		{
 			for (;;)
 			{
@@ -230,7 +230,7 @@ namespace fileserver
 					*accepted,
 					[&yield, &files](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
 					{
-						auto prepare_socket = [socket, &files](Si::yield_context<Si::nothing> &yield)
+						auto prepare_socket = [socket, &files](Si::push_context<Si::nothing> &yield)
 						{
 							std::array<char, 1024> receive_buffer;
 							Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));

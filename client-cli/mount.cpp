@@ -144,8 +144,7 @@ namespace fileserver
 
 			virtual Si::unique_observable<Si::error_or<file_offset>> size(unknown_digest const &name) SILICIUM_OVERRIDE
 			{
-				boost::ignore_unused_variable_warning(name);
-				throw std::logic_error("todo");
+				return Si::erase_unique(Si::make_coroutine<Si::error_or<file_offset>>(std::bind(&http_file_service::size_impl, this, std::placeholders::_1, name)));
 			}
 
 		private:
@@ -153,9 +152,8 @@ namespace fileserver
 			boost::asio::io_service *io = nullptr;
 			boost::asio::ip::tcp::endpoint server;
 
-			void open_impl(
-				Si::yield_context<Si::error_or<linear_file>> yield,
-				unknown_digest const &requested_name)
+			Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> connect(
+				Si::yield_context yield)
 			{
 				auto socket = std::make_shared<boost::asio::ip::tcp::socket>(*io);
 				Si::connecting_observable connector(*socket, server);
@@ -164,34 +162,48 @@ namespace fileserver
 					assert(ec);
 					if (*ec)
 					{
-						return yield(*ec);
+						return *ec;
 					}
 				}
+				return socket;
+			}
 
+			std::vector<char> serialize_request(std::string const &method, unknown_digest const &requested)
+			{
 				std::vector<char> request_buffer;
-				{
-					Si::http::request_header request;
-					request.http_version = "HTTP/1.0";
-					request.method = "GET";
-					request.path = "/";
-					encode_ascii_hex_digits(requested_name.begin(), requested_name.end(), std::back_inserter(request.path));
-					request.arguments["Host"] = server.address().to_string();
-					auto request_sink = Si::make_container_sink(request_buffer);
-					Si::http::write_header(request_sink, request);
-				}
-				Si::sending_observable sending(*socket, boost::make_iterator_range(request_buffer.data(), request_buffer.data() + request_buffer.size()));
-				{
-					boost::optional<Si::error_or<std::size_t>> const ec = yield.get_one(sending);
-					assert(ec);
-					if (ec->error())
-					{
-						return yield(*ec->error());
-					}
-					assert(ec->get() == request_buffer.size());
-				}
+				Si::http::request_header request;
+				request.http_version = "HTTP/1.0";
+				request.method = method;
+				request.path = "/";
+				encode_ascii_hex_digits(requested.begin(), requested.end(), std::back_inserter(request.path));
+				request.arguments["Host"] = server.address().to_string();
+				auto request_sink = Si::make_container_sink(request_buffer);
+				Si::http::write_header(request_sink, request);
+				return request_buffer;
+			}
 
-				std::array<char, 8192> buffer;
-				Si::socket_observable receiving(*socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			Si::error_or<Si::nothing> send_all(
+				Si::yield_context yield,
+				boost::asio::ip::tcp::socket &socket,
+				std::vector<char> const &buffer)
+			{
+				Si::sending_observable sending(socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+				boost::optional<Si::error_or<std::size_t>> const ec = yield.get_one(sending);
+				assert(ec);
+				if (ec->error())
+				{
+					return *ec->error();
+				}
+				assert(ec->get() == buffer.size());
+				return Si::nothing();
+			}
+
+			Si::error_or<std::pair<std::unique_ptr<Si::http::response_header>, std::size_t>> receive_response_header(
+				Si::yield_context yield,
+				boost::asio::ip::tcp::socket &socket,
+				std::array<char, 8192> &buffer)
+			{
+				Si::socket_observable receiving(socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 				auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(receiving), yield));
 				Si::received_from_socket_source response_source(receiving_source);
 				boost::optional<Si::http::response_header> const response_header = Si::http::parse_response_header(response_source);
@@ -199,23 +211,92 @@ namespace fileserver
 				{
 					throw std::logic_error("todo 1");
 				}
+				return std::make_pair(Si::to_unique(std::move(*response_header)), response_source.buffered().size());
+			}
 
-				if (response_header->status != 200)
+			void size_impl(
+				Si::push_context<Si::error_or<file_offset>> yield,
+				unknown_digest const &requested_name)
+			{
+				auto const maybe_socket = connect(yield);
+				if (maybe_socket.is_error())
+				{
+					return yield(*maybe_socket.error());
+				}
+				auto const socket = maybe_socket.get();
+				{
+					auto const request_buffer = serialize_request("GET", requested_name);
+					auto const sent = send_all(yield, *socket, request_buffer);
+					if (sent.is_error())
+					{
+						return yield(*sent.error());
+					}
+				}
+				std::array<char, 8192> buffer;
+				auto const received_header = receive_response_header(yield, *socket, buffer);
+				if (received_header.is_error())
+				{
+					return yield(*received_header.error());
+				}
+				auto const &response_header = *received_header.get().first;
+
+				if (response_header.status != 200)
 				{
 					return yield(boost::system::error_code(service_error::file_not_found));
 				}
 
-				auto content_length_header = response_header->arguments.find("Content-Length");
-				if (content_length_header == response_header->arguments.end())
+				auto content_length_header = response_header.arguments.find("Content-Length");
+				if (content_length_header == response_header.arguments.end())
 				{
 					throw std::logic_error("todo 2");
 				}
 
-				std::vector<byte> first_part(response_source.buffered().begin, response_source.buffered().end);
+				yield(boost::lexical_cast<file_offset>(content_length_header->second));
+			}
+
+			void open_impl(
+				Si::push_context<Si::error_or<linear_file>> yield,
+				unknown_digest const &requested_name)
+			{
+				auto const maybe_socket = connect(yield);
+				if (maybe_socket.is_error())
+				{
+					return yield(*maybe_socket.error());
+				}
+				auto const socket = maybe_socket.get();
+				{
+					auto const request_buffer = serialize_request("GET", requested_name);
+					auto const sent = send_all(yield, *socket, request_buffer);
+					if (sent.is_error())
+					{
+						return yield(*sent.error());
+					}
+				}
+				std::array<char, 8192> buffer;
+				auto const received_header = receive_response_header(yield, *socket, buffer);
+				if (received_header.is_error())
+				{
+					return yield(*received_header.error());
+				}
+				auto const &response_header = *received_header.get().first;
+				std::size_t const buffered_content = received_header.get().second;
+
+				if (response_header.status != 200)
+				{
+					return yield(boost::system::error_code(service_error::file_not_found));
+				}
+
+				auto content_length_header = response_header.arguments.find("Content-Length");
+				if (content_length_header == response_header.arguments.end())
+				{
+					throw std::logic_error("todo 2");
+				}
+
+				std::vector<byte> first_part(buffer.begin(), buffer.begin() + buffered_content);
 				file_offset const file_size = boost::lexical_cast<file_offset>(content_length_header->second);
 				linear_file file{file_size, Si::erase_unique(Si::make_coroutine<Si::error_or<Si::incoming_bytes>>(
 					[first_part, socket, file_size]
-						(Si::yield_context<Si::error_or<Si::incoming_bytes>> yield)
+						(Si::push_context<Si::error_or<Si::incoming_bytes>> yield)
 					{
 						if (!first_part.empty())
 						{
@@ -304,7 +385,7 @@ namespace fileserver
 			return file;
 		}
 
-		struct local_yield_context : Si::detail::yield_context_impl<Si::nothing>
+		struct local_push_context : Si::detail::push_context_impl<Si::nothing>
 		{
 			virtual void push_result(Si::nothing result) SILICIUM_OVERRIDE
 			{
@@ -321,8 +402,8 @@ namespace fileserver
 
 		auto parse_directory_listing(linear_file file)
 		{
-			local_yield_context yield_impl;
-			Si::yield_context<Si::nothing> yield(yield_impl);
+			local_push_context yield_impl;
+			Si::push_context<Si::nothing> yield(yield_impl);
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
 			return deserialize_json(std::move(content_source));
@@ -379,8 +460,8 @@ namespace fileserver
 				destination.st_mode = S_IFREG | 0444;
 				destination.st_nlink = 1;
 
-				local_yield_context yield_impl;
-				Si::yield_context<Si::nothing> yield(yield_impl);
+				local_push_context yield_impl;
+				Si::push_context<Si::nothing> yield(yield_impl);
 				auto future_size = service.size(to_unknown_digest(file.referenced));
 				boost::optional<Si::error_or<file_offset>> const size = yield.get_one(future_size);
 				assert(size);
@@ -456,8 +537,9 @@ namespace fileserver
 					return -ENOENT;
 				});
 			}
-			catch (...)
+			catch (std::exception const &e)
 			{
+				std::cerr << e.what() << '\n';
 				return -EIO;
 			}
 		}
@@ -528,8 +610,8 @@ namespace fileserver
 			}
 			if (file.buffer.empty())
 			{
-				local_yield_context yield_impl;
-				Si::yield_context<Si::nothing> yield(yield_impl);
+				local_push_context yield_impl;
+				Si::push_context<Si::nothing> yield(yield_impl);
 				boost::optional<Si::error_or<Si::incoming_bytes>> const piece = yield.get_one(file.source.content);
 				assert(piece);
 				if (piece->is_error())
