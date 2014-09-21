@@ -18,7 +18,7 @@ namespace fileserver
 		}
 
 		explicit path(boost::filesystem::path const &other)
-			: characters(other.string().begin(), other.string().end())
+			: characters(other.c_str())
 		{
 		}
 
