@@ -2,13 +2,23 @@
 #define FILESERVER_TYPED_REFERENCE_HPP
 
 #include <server/digest.hpp>
-#include <boost/container/string.hpp>
+#ifdef _MSC_VER
+#	include <string>
+#else
+#	include <boost/container/string.hpp>
+#endif
 #include <ostream>
 #include <tuple>
 
 namespace fileserver
 {
-	using content_type = boost::container::string;
+	using content_type =
+#ifdef _MSC_VER
+		std::string
+#else
+		boost::container::string
+#endif
+		;
 
 	content_type const blob_content_type = "blob";
 

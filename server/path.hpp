@@ -2,7 +2,9 @@
 #define FILESERVER_PATH_HPP
 
 #include <silicium/config.hpp>
-#include <boost/container/string.hpp>
+#ifndef _MSC_VER
+#	include <boost/container/string.hpp>
+#endif
 #include <boost/filesystem/path.hpp>
 
 namespace fileserver
@@ -64,7 +66,12 @@ namespace fileserver
 
 	private:
 
-		boost::container::basic_string<value_type> characters;
+#ifdef _MSC_VER
+		std::basic_string<value_type>
+#else
+		boost::container::basic_string<value_type>
+#endif
+			characters;
 	};
 }
 

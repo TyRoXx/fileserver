@@ -1,3 +1,7 @@
+#ifdef _MSC_VER
+//fixes "fatal error C1189: #error :  WinSock.h has already been included"
+#	include <boost/asio.hpp>
+#endif
 #include <server/scan_directory.hpp>
 #include <server/directory_listing.hpp>
 #include <server/sha256.hpp>
@@ -20,7 +24,7 @@
 #include <silicium/to_unique.hpp>
 #include <silicium/thread.hpp>
 #include <silicium/buffering_source.hpp>
-#include <silicium/linux/open.hpp>
+#include <silicium/open.hpp>
 #include <silicium/read_file.hpp>
 #include <silicium/memory_source.hpp>
 #include <silicium/std_threading.hpp>

@@ -4,12 +4,20 @@
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <silicium/fast_variant.hpp>
-#include <boost/container/string.hpp>
+#ifndef _MSC_VER
+#	include <boost/container/string.hpp>
+#endif
 
 namespace fileserver
 {
 	using digest = Si::fast_variant<sha256_digest>;
-	using unknown_digest = boost::container::basic_string<byte>;
+	using unknown_digest =
+#ifdef _MSC_VER
+		std::basic_string<byte>
+#else
+		boost::container::basic_string<byte>
+#endif
+		;
 
 	inline boost::iterator_range<byte const *> get_digest_digits(digest const &original)
 	{
