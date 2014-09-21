@@ -152,7 +152,7 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
-		fileserver::mount_directory(*requested, mount_point);
+		fileserver::mount_directory(*requested, mount_point, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
 	}
 	else
 	{

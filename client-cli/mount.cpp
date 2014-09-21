@@ -672,7 +672,7 @@ namespace fileserver
 #endif
 	}
 
-	void mount_directory(unknown_digest const &root_digest, boost::filesystem::path const &mount_point)
+	void mount_directory(unknown_digest const &root_digest, boost::filesystem::path const &mount_point, boost::asio::ip::tcp::endpoint const &server)
 	{
 #ifdef __linux__
 		chan_deleter deleter;
@@ -692,7 +692,7 @@ namespace fileserver
 		operations.release = release;
 		operations.read = read;
 		g_config.root = root_digest;
-		g_config.server = boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080);
+		g_config.server = server;
 		user_data_for_fuse user_data;
 		std::unique_ptr<fuse, fuse_deleter> const f(fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
 		if (!f)
