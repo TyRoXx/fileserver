@@ -481,7 +481,7 @@ namespace fileserver
 			return false;
 		}
 
-		int hello_getattr(const char *path, struct stat *stbuf)
+		int getattr(const char *path, struct stat *stbuf)
 		{
 			memset(stbuf, 0, sizeof(*stbuf));
 			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
@@ -497,7 +497,7 @@ namespace fileserver
 			return -ENOENT;
 		}
 
-		int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+		int readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 					 off_t offset, struct fuse_file_info *fi)
 		{
 			try
@@ -556,7 +556,7 @@ namespace fileserver
 			}
 		};
 
-		int hello_open(const char *path, struct fuse_file_info *fi)
+		int open(const char *path, struct fuse_file_info *fi)
 		{
 			if ((fi->flags & 3) != O_RDONLY) //the files are currently read-only
 			{
@@ -600,7 +600,7 @@ namespace fileserver
 			return 0; //ignored by FUSE
 		}
 
-		int hello_read(const char *path, char *buf, size_t size, off_t offset,
+		int read(const char *path, char *buf, size_t size, off_t offset,
 					  struct fuse_file_info *fi)
 		{
 			open_file &file = *reinterpret_cast<open_file *>(fi->fh);
@@ -673,11 +673,11 @@ namespace fileserver
 		fuse_operations operations{};
 		operations.init = init;
 		operations.destroy = destroy;
-		operations.getattr = hello_getattr;
-		operations.readdir = hello_readdir;
-		operations.open = hello_open;
+		operations.getattr = getattr;
+		operations.readdir = readdir;
+		operations.open = open;
 		operations.release = release;
-		operations.read = hello_read;
+		operations.read = read;
 		g_config.root = root_digest;
 		g_config.server = boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080);
 		user_data_for_fuse user_data;
