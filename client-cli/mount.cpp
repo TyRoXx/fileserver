@@ -253,17 +253,19 @@ namespace fileserver
 			unknown_digest root;
 		};
 
-		char const * const hello_path = "/hello";
-		char const * const hello_str = "Hello, fuse!\n";
-
-		unknown_digest root;
+		struct configuration
+		{
+			unknown_digest root;
+			boost::asio::ip::tcp::endpoint server;
+		}
+		g_config;
 
 #ifdef __linux__
 		void *init(struct fuse_conn_info *conn)
 		{
-			assert(!root.empty());
+			assert(!g_config.root.empty());
 			auto fs = Si::make_unique<file_system>();
-			fs->backend = Si::make_unique<http_file_service>(fs->io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
+			fs->backend = Si::make_unique<http_file_service>(fs->io, g_config.server);
 			fs->keep_running = boost::in_place(boost::ref(fs->io));
 			auto &io = fs->io;
 			fs->worker = std::async(std::launch::async, [&io]()
@@ -281,7 +283,7 @@ namespace fileserver
 					}
 				}
 			});
-			fs->root = std::move(root);
+			fs->root = g_config.root;
 			return fs.release();
 		}
 
@@ -594,7 +596,8 @@ namespace fileserver
 		operations.open = hello_open;
 		operations.release = release;
 		operations.read = hello_read;
-		root = root_digest;
+		g_config.root = root_digest;
+		g_config.server = boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080);
 		user_data_for_fuse user_data;
 		std::unique_ptr<fuse, fuse_deleter> const f(fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
 		if (!f)
