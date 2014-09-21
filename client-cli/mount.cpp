@@ -344,6 +344,7 @@ namespace fileserver
 #ifdef __linux__
 		void *init(struct fuse_conn_info *conn)
 		{
+			boost::ignore_unused_variable_warning(conn);
 			assert(!g_config.root.empty());
 			auto fs = Si::make_unique<file_system>();
 			fs->backend = Si::make_unique<http_file_service>(fs->io, g_config.server);
@@ -497,9 +498,15 @@ namespace fileserver
 			return -ENOENT;
 		}
 
-		int readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-					 off_t offset, struct fuse_file_info *fi)
+		int readdir(
+			const char *path,
+			void *buf,
+			fuse_fill_dir_t filler,
+			off_t offset,
+			struct fuse_file_info *fi)
 		{
+			boost::ignore_unused_variable_warning(offset);
+			boost::ignore_unused_variable_warning(fi);
 			try
 			{
 				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
@@ -596,13 +603,19 @@ namespace fileserver
 
 		int release(const char *path, struct fuse_file_info *fi)
 		{
+			boost::ignore_unused_variable_warning(path);
 			std::unique_ptr<open_file>(reinterpret_cast<open_file *>(fi->fh));
 			return 0; //ignored by FUSE
 		}
 
-		int read(const char *path, char *buf, size_t size, off_t offset,
-					  struct fuse_file_info *fi)
+		int read(
+			const char *path,
+			char *buf,
+			size_t size,
+			off_t offset,
+			struct fuse_file_info *fi)
 		{
+			boost::ignore_unused_variable_warning(path);
 			open_file &file = *reinterpret_cast<open_file *>(fi->fh);
 			if (file.already_read != offset)
 			{
@@ -618,15 +631,15 @@ namespace fileserver
 				{
 					return -EIO;
 				}
-				std::size_t const reading = std::min(size, (*piece)->size());
+				int const reading = static_cast<int>(std::min(static_cast<std::size_t>(std::numeric_limits<int>::max()), std::min(size, (*piece)->size())));
 				std::copy((*piece)->begin, (*piece)->begin + reading, buf);
 				file.already_read += reading;
 				file.buffer.assign((*piece)->begin + reading, (*piece)->end);
-				return reading; //TODO fix warning
+				return reading;
 			}
 			else
 			{
-				std::size_t const copied = std::min(size, file.buffer.size());
+				int const copied = static_cast<int>(std::min(static_cast<std::size_t>(std::numeric_limits<int>::max()), std::min(size, file.buffer.size())));
 				std::copy(file.buffer.begin(), file.buffer.begin() + copied, buf);
 				file.already_read += copied;
 				file.buffer.erase(file.buffer.begin(), file.buffer.begin() + copied);
