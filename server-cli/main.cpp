@@ -37,6 +37,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 
 namespace fileserver
 {
@@ -91,6 +92,24 @@ namespace fileserver
 		return serialized;
 	}
 
+	enum class request_type
+	{
+		get,
+		head
+	};
+
+	request_type determine_request_type(std::string const &method)
+	{
+		if (boost::algorithm::iequals("HEAD", method))
+		{
+			return request_type::head;
+		}
+		else
+		{
+			return request_type::get;
+		}
+	}
+
 	template <class MakeSender>
 	void respond(
 		Si::push_context<Si::nothing> &yield,
@@ -140,34 +159,46 @@ namespace fileserver
 			}
 		}
 
-		auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield)
+		switch (determine_request_type(header.method))
 		{
-			yield(Si::visit<std::vector<char>>(
-				found_file,
-				[](file_system_location const &location)
+		case request_type::get:
+			{
+				auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield)
 				{
-					return Si::read_file(location.where.to_boost_path());
-				},
-				[](in_memory_location const &location)
+					yield(Si::visit<std::vector<char>>(
+						found_file,
+						[](file_system_location const &location)
+						{
+							return Si::read_file(location.where.to_boost_path());
+						},
+						[](in_memory_location const &location)
+						{
+							return location.content;
+						}
+					));
+				});
+				boost::optional<std::vector<char>> const body = yield.get_one(reading);
+				if (!body)
 				{
-					return location.content;
+					return;
 				}
-			));
-		});
-		boost::optional<std::vector<char>> const body = yield.get_one(reading);
-		if (!body)
-		{
-			return;
-		}
 
-		if (body->size() != location_file_size(found_file))
-		{
-			return;
-		}
+				if (body->size() != location_file_size(found_file))
+				{
+					return;
+				}
 
-		if (!try_send(*body))
-		{
-			return;
+				if (!try_send(*body))
+				{
+					return;
+				}
+				break;
+			}
+
+		case request_type::head:
+			{
+				break;
+			}
 		}
 	}
 

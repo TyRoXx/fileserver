@@ -225,7 +225,7 @@ namespace fileserver
 				}
 				auto const socket = maybe_socket.get();
 				{
-					auto const request_buffer = serialize_request("GET", requested_name);
+					auto const request_buffer = serialize_request("HEAD", requested_name);
 					auto const sent = send_all(yield, *socket, request_buffer);
 					if (sent.is_error())
 					{
