@@ -1,4 +1,5 @@
 #include "mount.hpp"
+#include "clone.hpp"
 #include <server/path.hpp>
 #include <silicium/connecting_observable.hpp>
 #include <silicium/total_consumer.hpp>
@@ -138,6 +139,18 @@ int main(int argc, char **argv)
 		return parsed;
 	};
 
+	boost::asio::ip::tcp::endpoint server(boost::asio::ip::address_v4::loopback(), 8080);
+	if (!host.empty())
+	{
+		boost::system::error_code ec;
+		server.address(boost::asio::ip::address_v4::from_string(host, ec));
+		if (ec)
+		{
+			std::cerr << ec.message() << '\n';
+			return 1;
+		}
+	}
+
 	if (verb == "get")
 	{
 		auto requested = parse_digest();
@@ -154,18 +167,16 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
-		boost::asio::ip::address_v4 server_address = boost::asio::ip::address_v4::loopback();
-		if (!host.empty())
+		fileserver::mount_directory(*requested, mount_point, server);
+	}
+	else if (verb == "clone")
+	{
+		auto requested = parse_digest();
+		if (!requested)
 		{
-			boost::system::error_code ec;
-			server_address = boost::asio::ip::address_v4::from_string(host, ec);
-			if (ec)
-			{
-				std::cerr << ec.message() << '\n';
-				return 1;
-			}
+			return 1;
 		}
-		fileserver::mount_directory(*requested, mount_point, boost::asio::ip::tcp::endpoint(server_address, 8080));
+		fileserver::clone_directory(*requested, mount_point, server);
 	}
 	else
 	{
