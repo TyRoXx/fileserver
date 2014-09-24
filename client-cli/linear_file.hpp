@@ -12,6 +12,9 @@ namespace fileserver
 	using file_offset = std::intmax_t;
 
 	struct linear_file
+#ifdef _MSC_VER
+		: boost::noncopyable
+#endif
 	{
 		file_offset size;
 		Si::unique_observable<Si::error_or<Si::incoming_bytes>> content;

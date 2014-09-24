@@ -72,7 +72,7 @@ namespace fileserver
 		return Si::nothing();
 	}
 
-	Si::error_or<std::pair<std::unique_ptr<Si::http::response_header>, std::size_t>> http_file_service::receive_response_header(
+	Si::error_or<std::pair<Si::http::response_header, std::size_t>> http_file_service::receive_response_header(
 		Si::yield_context yield,
 		boost::asio::ip::tcp::socket &socket,
 		std::array<char, 8192> &buffer)
@@ -80,12 +80,12 @@ namespace fileserver
 		Si::socket_observable receiving(socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 		auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(receiving), yield));
 		Si::received_from_socket_source response_source(receiving_source);
-		boost::optional<Si::http::response_header> const response_header = Si::http::parse_response_header(response_source);
+		boost::optional<Si::http::response_header> response_header = Si::http::parse_response_header(response_source);
 		if (!response_header)
 		{
 			throw std::logic_error("todo 1");
 		}
-		return std::make_pair(Si::to_unique(std::move(*response_header)), response_source.buffered().size());
+		return std::make_pair(std::move(*response_header), response_source.buffered().size());
 	}
 
 	void http_file_service::size_impl(
@@ -112,7 +112,7 @@ namespace fileserver
 		{
 			return yield(*received_header.error());
 		}
-		auto const &response_header = *received_header.get().first;
+		auto const &response_header = received_header.get().first;
 
 		if (response_header.status != 200)
 		{
@@ -152,7 +152,7 @@ namespace fileserver
 		{
 			return yield(*received_header.error());
 		}
-		auto const &response_header = *received_header.get().first;
+		auto const &response_header = received_header.get().first;
 		std::size_t const buffered_content = received_header.get().second;
 
 		if (response_header.status != 200)

@@ -7,7 +7,7 @@
 
 namespace fileserver
 {
-	void clone_directory(fileserver::unknown_digest const &root_digest, boost::filesystem::path const &destination, boost::asio::ip::tcp::endpoint const &server);
+	void clone_directory(unknown_digest const &root_digest, boost::filesystem::path const &destination, boost::asio::ip::tcp::endpoint const &server);
 }
 
 #endif
