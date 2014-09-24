@@ -5,6 +5,9 @@
 #include <silicium/observable_source.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/ref.hpp>
+#include <silicium/open.hpp>
+#include <silicium/coroutine.hpp>
+#include <silicium/total_consumer.hpp>
 
 namespace fileserver
 {
@@ -26,12 +29,17 @@ namespace fileserver
 				parsed,
 				[&](std::unique_ptr<directory_listing> const &listing) -> boost::system::error_code
 			{
-				throw std::logic_error("todo");
 				for (auto const &entry : listing->entries)
 				{
 					if (entry.second.type == "blob")
 					{
-						throw std::logic_error("todo");
+						auto maybe_file = Si::create_file(destination / entry.first);
+						if (maybe_file.is_error())
+						{
+							return *maybe_file.error();
+						}
+						auto file = std::move(maybe_file).get();
+						//TODO write file content
 					}
 					else if (entry.second.type == "json_v1")
 					{
@@ -54,6 +62,12 @@ namespace fileserver
 	{
 		boost::asio::io_service io;
 		http_file_service service(io, server);
+		auto done = Si::make_total_consumer(Si::make_coroutine<Si::nothing>([&](Si::push_context<Si::nothing> yield)
+		{
+			auto error = clone_recursively(service, root_digest, destination, yield);
+			std::cerr << error << " " << error.message() << '\n';
+		}));
+		done.start();
 		io.run();
 	}
 }
