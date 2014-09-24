@@ -87,6 +87,7 @@ int main(int argc, char **argv)
 	std::string verb;
 	std::string digest;
 	boost::filesystem::path mount_point;
+	std::string host;
 
 	boost::program_options::options_description desc("Allowed options");
 	desc.add_options()
@@ -94,6 +95,7 @@ int main(int argc, char **argv)
 		("verb", boost::program_options::value(&verb), "what to do (get)")
 		("digest,d", boost::program_options::value(&digest), "the hash of the file to get/mount")
 		("mountpoint", boost::program_options::value(&mount_point), "a directory to mount at")
+		("host", boost::program_options::value(&host), "the IP address of the server")
 	;
 
 	boost::program_options::positional_options_description positional;
@@ -152,7 +154,18 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
-		fileserver::mount_directory(*requested, mount_point, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
+		boost::asio::ip::address_v4 server_address = boost::asio::ip::address_v4::loopback();
+		if (!host.empty())
+		{
+			boost::system::error_code ec;
+			server_address = boost::asio::ip::address_v4::from_string(host, ec);
+			if (ec)
+			{
+				std::cerr << ec.message() << '\n';
+				return 1;
+			}
+		}
+		fileserver::mount_directory(*requested, mount_point, boost::asio::ip::tcp::endpoint(server_address, 8080));
 	}
 	else
 	{
