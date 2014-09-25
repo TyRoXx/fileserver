@@ -148,6 +148,7 @@ namespace fileserver
 
 		{
 			Si::http::response_header response;
+			response.arguments = Si::make_unique<std::map<Si::noexcept_string, Si::noexcept_string>>();
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
 			response.status = 200;
