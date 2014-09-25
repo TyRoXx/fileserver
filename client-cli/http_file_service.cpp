@@ -42,15 +42,15 @@ namespace fileserver
 		return socket;
 	}
 
-	std::vector<char> http_file_service::serialize_request(std::string const &method, unknown_digest const &requested)
+	std::vector<char> http_file_service::serialize_request(Si::noexcept_string method, unknown_digest const &requested)
 	{
 		std::vector<char> request_buffer;
 		Si::http::request_header request;
 		request.http_version = "HTTP/1.0";
-		request.method = method;
+		request.method = std::move(method);
 		request.path = "/";
 		encode_ascii_hex_digits(requested.begin(), requested.end(), std::back_inserter(request.path));
-		request.arguments["Host"] = server.address().to_string();
+		request.arguments["Host"] = server.address().to_string().c_str();
 		auto request_sink = Si::make_container_sink(request_buffer);
 		Si::http::write_header(request_sink, request);
 		return request_buffer;
@@ -119,8 +119,8 @@ namespace fileserver
 			return yield(boost::system::error_code(service_error::file_not_found));
 		}
 
-		auto content_length_header = response_header.arguments.find("Content-Length");
-		if (content_length_header == response_header.arguments.end())
+		auto content_length_header = response_header.arguments->find("Content-Length");
+		if (content_length_header == response_header.arguments->end())
 		{
 			throw std::logic_error("todo 2");
 		}
@@ -160,8 +160,8 @@ namespace fileserver
 			return yield(boost::system::error_code(service_error::file_not_found));
 		}
 
-		auto content_length_header = response_header.arguments.find("Content-Length");
-		if (content_length_header == response_header.arguments.end())
+		auto content_length_header = response_header.arguments->find("Content-Length");
+		if (content_length_header == response_header.arguments->end())
 		{
 			throw std::logic_error("todo 2");
 		}

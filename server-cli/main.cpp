@@ -53,7 +53,8 @@ namespace fileserver
 		unknown_digest requested_file;
 	};
 
-	Si::optional<content_request> parse_request_path(std::string const &path)
+	template <class String>
+	Si::optional<content_request> parse_request_path(String const &path)
 	{
 		if (path.empty())
 		{
@@ -80,7 +81,7 @@ namespace fileserver
 		header.http_version = "HTTP/1.0";
 		header.status = 404;
 		header.status_text = "Not Found";
-		header.arguments["Connection"] = "close";
+		(*header.arguments)["Connection"] = "close";
 		return header;
 	}
 
@@ -98,7 +99,8 @@ namespace fileserver
 		head
 	};
 
-	request_type determine_request_type(std::string const &method)
+	template <class String>
+	request_type determine_request_type(String const &method)
 	{
 		if (boost::algorithm::iequals("HEAD", method))
 		{
@@ -149,8 +151,8 @@ namespace fileserver
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
 			response.status = 200;
-			response.arguments["Content-Length"] = boost::lexical_cast<std::string>(location_file_size(found_file));
-			response.arguments["Connection"] = "close";
+			(*response.arguments)["Content-Length"] = boost::lexical_cast<Si::noexcept_string>(location_file_size(found_file));
+			(*response.arguments)["Connection"] = "close";
 
 			std::vector<char> response_header = serialize_response(response);
 			if (!try_send(response_header))

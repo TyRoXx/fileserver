@@ -39,7 +39,7 @@ namespace fileserver
 					}
 					else
 					{
-						throw std::logic_error("unknown directory entry type " + entry.second.type); //TODO
+						throw std::logic_error("unknown directory entry type"); //TODO
 					}
 				}
 			},

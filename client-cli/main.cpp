@@ -16,7 +16,7 @@
 
 namespace
 {
-	Si::http::request_header make_get_request(std::string host, std::string path)
+	Si::http::request_header make_get_request(Si::noexcept_string host, Si::noexcept_string path)
 	{
 		Si::http::request_header header;
 		header.http_version = "HTTP/1.0";
@@ -45,7 +45,7 @@ namespace
 			{
 				std::vector<char> send_buffer;
 				auto send_sink = Si::make_container_sink(send_buffer);
-				Si::http::write_header(send_sink, make_get_request("localhost", "/" + fileserver::format_digest(requested_digest)));
+				Si::http::write_header(send_sink, make_get_request("localhost", "/" + fileserver::format_digest<Si::noexcept_string>(requested_digest)));
 				Si::sending_observable sending(socket, boost::make_iterator_range(send_buffer.data(), send_buffer.data() + send_buffer.size()));
 				boost::optional<Si::error_or<std::size_t>> const error = yield.get_one(sending);
 				assert(error);

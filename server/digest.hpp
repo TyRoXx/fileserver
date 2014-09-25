@@ -65,9 +65,10 @@ namespace fileserver
 		return parse_digest(begin(formatted), end(formatted));
 	}
 
-	inline std::string format_digest(unknown_digest const &value)
+	template <class String>
+	String format_digest(unknown_digest const &value)
 	{
-		std::string formatted;
+		String formatted;
 		encode_ascii_hex_digits(value.begin(), value.end(), std::back_inserter(formatted));
 		return formatted;
 	}

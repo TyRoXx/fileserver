@@ -19,7 +19,7 @@ namespace fileserver
 		boost::asio::ip::tcp::endpoint server;
 
 		Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> connect(Si::yield_context yield);
-		std::vector<char> serialize_request(std::string const &method, unknown_digest const &requested);
+		std::vector<char> serialize_request(Si::noexcept_string method, unknown_digest const &requested);
 		Si::error_or<Si::nothing> send_all(Si::yield_context yield, boost::asio::ip::tcp::socket &socket, std::vector<char> const &buffer);
 		Si::error_or<std::pair<Si::http::response_header, std::size_t>> receive_response_header(
 			Si::yield_context yield, boost::asio::ip::tcp::socket &socket, std::array<char, 8192> &buffer);
