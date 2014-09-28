@@ -9,12 +9,113 @@
 #include <silicium/total_consumer.hpp>
 #include <silicium/open.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <boost/asio/posix/stream_descriptor.hpp>
+#include <boost/asio/write.hpp>
+
+namespace Si
+{
+	template <class AsyncStream>
+	struct reading_observable
+	{
+		typedef error_or<incoming_bytes> element_type;
+
+		explicit reading_observable(AsyncStream &stream, boost::iterator_range<char *> buffer)
+			: stream(&stream)
+		{
+			assert(buffer.size() >= 1);
+		}
+
+		void async_get_one(observer<element_type> &receiver)
+		{
+			stream->async_read_some(
+				boost::asio::buffer(buffer.begin(), buffer.size()),
+				[this, &receiver](boost::system::error_code ec, std::size_t bytes_received)
+			{
+				if (ec)
+				{
+					receiver.got_element(ec);
+				}
+				else
+				{
+					assert(bytes_received <= buffer.size());
+					receiver.got_element(incoming_bytes(buffer.begin(), buffer.begin() + bytes_received));
+				}
+			});
+		}
+
+	private:
+
+		AsyncStream *stream;
+		boost::iterator_range<char *> buffer;
+	};
+
+	template <class AsyncStream>
+	auto make_reading_observable(AsyncStream &stream, boost::iterator_range<char *> buffer)
+	{
+		return reading_observable<AsyncStream>(stream, buffer);
+	}
+
+	template <class AsyncStream>
+	struct writing_observable
+	{
+		typedef boost::system::error_code element_type;
+
+		explicit writing_observable(AsyncStream &stream, boost::iterator_range<char const *> buffer)
+			: stream(&stream)
+		{
+			assert(buffer.size() >= 1);
+		}
+
+		void async_get_one(observer<element_type> &receiver)
+		{
+			boost::asio::async_write(
+				*stream,
+				boost::asio::buffer(buffer.begin(), buffer.size()),
+				[this, &receiver](boost::system::error_code ec, std::size_t bytes_received)
+			{
+				assert(ec || (bytes_received == buffer.size()));
+				receiver.got_element(ec);
+			});
+		}
+
+	private:
+
+		AsyncStream *stream;
+		boost::iterator_range<char const *> buffer;
+	};
+
+	template <class AsyncStream>
+	auto make_writing_observable(AsyncStream &stream, boost::iterator_range<char const *> buffer)
+	{
+		return writing_observable<AsyncStream>(stream, buffer);
+	}
+
+	inline boost::asio::posix::stream_descriptor stream_from_file(boost::asio::io_service &io, file_descriptor file)
+	{
+		return boost::asio::posix::stream_descriptor(io, file.release());
+	}
+
+	boost::system::error_code write_all(native_file_handle destination, boost::iterator_range<char const *> buffer)
+	{
+		std::size_t total_written = 0;
+		while (total_written < buffer.size())
+		{
+			ssize_t rc = write(destination, buffer.begin() + total_written, buffer.size() - total_written);
+			if (rc < 0)
+			{
+				return boost::system::error_code(errno, boost::system::native_ecat);
+			}
+			total_written += static_cast<size_t>(rc);
+		}
+		return boost::system::error_code();
+	}
+}
 
 namespace fileserver
 {
 	namespace
 	{
-		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, boost::filesystem::path const &destination, Si::yield_context yield)
+		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, boost::filesystem::path const &destination, Si::yield_context yield, boost::asio::io_service &io)
 		{
 			{
 				boost::system::error_code ec;
@@ -42,16 +143,46 @@ namespace fileserver
 				{
 					if (entry.second.type == "blob")
 					{
-						auto maybe_file = Si::create_file(destination / entry.first);
-						if (maybe_file.error())
+						auto opening_remote = service.open(to_unknown_digest(entry.second.referenced));
+						auto maybe_remote_file = *yield.get_one(opening_remote);
+						if (maybe_remote_file.error())
 						{
-							return *maybe_file.error();
+							return *maybe_remote_file.error();
 						}
-						//TODO write file
+						linear_file remote_file = std::move(maybe_remote_file).get();
+						auto maybe_local_file = Si::create_file(destination / entry.first);
+						if (maybe_local_file.error())
+						{
+							return *maybe_local_file.error();
+						}
+						auto local_file = std::move(maybe_local_file).get();
+						file_offset total_written = 0;
+						while (total_written < remote_file.size)
+						{
+							Si::error_or<Si::incoming_bytes> const received = *yield.get_one(remote_file.content);
+							if (received.error())
+							{
+								return *received.error();
+							}
+							if (received->size() == 0)
+							{
+								break;
+							}
+							if (static_cast<file_offset>(received->size()) > (remote_file.size - total_written))
+							{
+								throw std::logic_error("todo received too much");
+							}
+							boost::system::error_code const written = Si::write_all(local_file.handle, boost::make_iterator_range(received->begin, received->end));
+							if (written)
+							{
+								return written;
+							}
+							total_written += received->size();
+						}
 					}
 					else if (entry.second.type == "json_v1")
 					{
-						auto ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), destination / entry.first, yield);
+						auto ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), destination / entry.first, yield, io);
 						if (ec)
 						{
 							return ec;
@@ -77,7 +208,7 @@ namespace fileserver
 		http_file_service service(io, server);
 		auto all = Si::make_total_consumer(Si::make_coroutine<Si::nothing>([&](Si::push_context<Si::nothing> yield)
 		{
-			auto ec = clone_recursively(service, root_digest, destination, yield);
+			auto ec = clone_recursively(service, root_digest, destination, yield, io);
 			if (ec)
 			{
 				Si::detail::throw_system_error(ec);
