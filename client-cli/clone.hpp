@@ -1,9 +1,11 @@
 #ifndef FILESERVER_CLIENT_CLONE_HPP
 #define FILESERVER_CLIENT_CLONE_HPP
 
+#include "file_service.hpp"
 #include <server/digest.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/file_descriptor.hpp>
+#include <silicium/ptr_observable.hpp>
 #include <silicium/open.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -95,7 +97,8 @@ namespace fileserver
 		boost::filesystem::path root;
 	};
 
-	void clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, boost::asio::ip::tcp::endpoint const &server);
+	Si::unique_observable<boost::system::error_code>
+	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, file_service &server, boost::asio::io_service &io);
 }
 
 #endif

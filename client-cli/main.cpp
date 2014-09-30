@@ -1,5 +1,6 @@
 #include "mount.hpp"
 #include "clone.hpp"
+#include "http_file_service.hpp"
 #include <server/path.hpp>
 #include <silicium/connecting_observable.hpp>
 #include <silicium/total_consumer.hpp>
@@ -9,6 +10,7 @@
 #include <silicium/socket_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/observable_source.hpp>
+#include <silicium/for_each.hpp>
 #include <silicium/virtualized_source.hpp>
 #include <boost/program_options.hpp>
 #include <boost/asio/io_service.hpp>
@@ -176,8 +178,25 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
+		int rc = 1;
 		fileserver::filesystem_directory_manipulator mount_point_manipulator(mount_point);
-		fileserver::clone_directory(*requested, mount_point_manipulator, server);
+		boost::asio::io_service io;
+		fileserver::http_file_service service(io, server);
+		auto all = Si::for_each(fileserver::clone_directory(*requested, mount_point_manipulator, service, io), [&rc](boost::system::error_code ec)
+		{
+			if (ec)
+			{
+				std::cerr << ec << ": " << ec.message() << '\n';
+				rc = 1;
+			}
+			else
+			{
+				rc = 0;
+			}
+		});
+		all.start();
+		io.run();
+		return rc;
 	}
 	else
 	{

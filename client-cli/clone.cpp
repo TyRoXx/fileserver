@@ -102,19 +102,13 @@ namespace fileserver
 		}
 	}
 
-	void clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, boost::asio::ip::tcp::endpoint const &server)
+	Si::unique_observable<boost::system::error_code>
+	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, file_service &server, boost::asio::io_service &io)
 	{
-		boost::asio::io_service io;
-		http_file_service service(io, server);
-		auto all = Si::make_total_consumer(Si::make_coroutine<Si::nothing>([&](Si::push_context<Si::nothing> yield)
+		return Si::erase_unique(Si::make_coroutine<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
 		{
-			auto ec = clone_recursively(service, root_digest, destination, yield, io);
-			if (ec)
-			{
-				Si::detail::throw_system_error(ec);
-			}
+			auto ec = clone_recursively(server, root_digest, destination, yield, io);
+			yield(ec);
 		}));
-		all.start();
-		io.run();
 	}
 }
