@@ -16,26 +16,10 @@ namespace fileserver
 {
 	namespace
 	{
-		boost::system::error_code write_all(Si::native_file_handle destination, boost::iterator_range<char const *> buffer)
-		{
-			std::size_t total_written = 0;
-			while (total_written < buffer.size())
-			{
-				ssize_t rc = write(destination, buffer.begin() + total_written, buffer.size() - total_written);
-				if (rc < 0)
-				{
-					return boost::system::error_code(errno, boost::system::native_ecat);
-				}
-				total_written += static_cast<size_t>(rc);
-			}
-			return boost::system::error_code();
-		}
-
-		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, boost::filesystem::path const &destination, Si::yield_context yield, boost::asio::io_service &io)
+		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
 		{
 			{
-				boost::system::error_code ec;
-				boost::filesystem::create_directories(destination, ec);
+				boost::system::error_code const ec = destination.require_exists();
 				if (ec)
 				{
 					return ec;
@@ -66,7 +50,7 @@ namespace fileserver
 							return *maybe_remote_file.error();
 						}
 						linear_file remote_file = std::move(maybe_remote_file).get();
-						auto maybe_local_file = Si::create_file(destination / entry.first);
+						auto maybe_local_file = destination.create_regular_file(entry.first);
 						if (maybe_local_file.error())
 						{
 							return *maybe_local_file.error();
@@ -88,7 +72,7 @@ namespace fileserver
 							{
 								throw std::logic_error("todo received too much");
 							}
-							boost::system::error_code const written = write_all(local_file.handle, boost::make_iterator_range(received->begin, received->end));
+							boost::system::error_code const written = local_file->write(boost::make_iterator_range(received->begin, received->end));
 							if (written)
 							{
 								return written;
@@ -98,7 +82,7 @@ namespace fileserver
 					}
 					else if (entry.second.type == "json_v1")
 					{
-						auto ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), destination / entry.first, yield, io);
+						auto ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
 						if (ec)
 						{
 							return ec;
@@ -118,7 +102,7 @@ namespace fileserver
 		}
 	}
 
-	void clone_directory(unknown_digest const &root_digest, boost::filesystem::path const &destination, boost::asio::ip::tcp::endpoint const &server)
+	void clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, boost::asio::ip::tcp::endpoint const &server)
 	{
 		boost::asio::io_service io;
 		http_file_service service(io, server);

@@ -176,7 +176,8 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
-		fileserver::clone_directory(*requested, mount_point, server);
+		fileserver::filesystem_directory_manipulator mount_point_manipulator(mount_point);
+		fileserver::clone_directory(*requested, mount_point_manipulator, server);
 	}
 	else
 	{
