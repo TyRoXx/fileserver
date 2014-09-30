@@ -12,28 +12,25 @@
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/asio/write.hpp>
 
-namespace Si
-{
-	boost::system::error_code write_all(native_file_handle destination, boost::iterator_range<char const *> buffer)
-	{
-		std::size_t total_written = 0;
-		while (total_written < buffer.size())
-		{
-			ssize_t rc = write(destination, buffer.begin() + total_written, buffer.size() - total_written);
-			if (rc < 0)
-			{
-				return boost::system::error_code(errno, boost::system::native_ecat);
-			}
-			total_written += static_cast<size_t>(rc);
-		}
-		return boost::system::error_code();
-	}
-}
-
 namespace fileserver
 {
 	namespace
 	{
+		boost::system::error_code write_all(Si::native_file_handle destination, boost::iterator_range<char const *> buffer)
+		{
+			std::size_t total_written = 0;
+			while (total_written < buffer.size())
+			{
+				ssize_t rc = write(destination, buffer.begin() + total_written, buffer.size() - total_written);
+				if (rc < 0)
+				{
+					return boost::system::error_code(errno, boost::system::native_ecat);
+				}
+				total_written += static_cast<size_t>(rc);
+			}
+			return boost::system::error_code();
+		}
+
 		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, boost::filesystem::path const &destination, Si::yield_context yield, boost::asio::io_service &io)
 		{
 			{
@@ -91,7 +88,7 @@ namespace fileserver
 							{
 								throw std::logic_error("todo received too much");
 							}
-							boost::system::error_code const written = Si::write_all(local_file.handle, boost::make_iterator_range(received->begin, received->end));
+							boost::system::error_code const written = write_all(local_file.handle, boost::make_iterator_range(received->begin, received->end));
 							if (written)
 							{
 								return written;
