@@ -16,6 +16,47 @@ namespace fileserver
 {
 	namespace
 	{
+		boost::system::error_code clone_regular_file(file_service &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
+		{
+			auto opening_remote = service.open(blob_digest);
+			auto maybe_remote_file = *yield.get_one(opening_remote);
+			if (maybe_remote_file.error())
+			{
+				return *maybe_remote_file.error();
+			}
+			linear_file remote_file = std::move(maybe_remote_file).get();
+			auto maybe_local_file = destination.create_regular_file(file_name);
+			if (maybe_local_file.error())
+			{
+				return *maybe_local_file.error();
+			}
+			auto local_file = std::move(maybe_local_file).get();
+			file_offset total_written = 0;
+			while (total_written < remote_file.size)
+			{
+				Si::error_or<Si::incoming_bytes> const received = *yield.get_one(remote_file.content);
+				if (received.error())
+				{
+					return *received.error();
+				}
+				if (received->size() == 0)
+				{
+					break;
+				}
+				if (static_cast<file_offset>(received->size()) > (remote_file.size - total_written))
+				{
+					throw std::logic_error("todo received too much");
+				}
+				boost::system::error_code const written = local_file->write(boost::make_iterator_range(received->begin, received->end));
+				if (written)
+				{
+					return written;
+				}
+				total_written += received->size();
+			}
+			return boost::system::error_code();
+		}
+
 		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
 		{
 			{
@@ -43,46 +84,15 @@ namespace fileserver
 				{
 					if (entry.second.type == "blob")
 					{
-						auto opening_remote = service.open(to_unknown_digest(entry.second.referenced));
-						auto maybe_remote_file = *yield.get_one(opening_remote);
-						if (maybe_remote_file.error())
+						auto const ec = clone_regular_file(service, entry.first, to_unknown_digest(entry.second.referenced), destination, yield);
+						if (ec)
 						{
-							return *maybe_remote_file.error();
-						}
-						linear_file remote_file = std::move(maybe_remote_file).get();
-						auto maybe_local_file = destination.create_regular_file(entry.first);
-						if (maybe_local_file.error())
-						{
-							return *maybe_local_file.error();
-						}
-						auto local_file = std::move(maybe_local_file).get();
-						file_offset total_written = 0;
-						while (total_written < remote_file.size)
-						{
-							Si::error_or<Si::incoming_bytes> const received = *yield.get_one(remote_file.content);
-							if (received.error())
-							{
-								return *received.error();
-							}
-							if (received->size() == 0)
-							{
-								break;
-							}
-							if (static_cast<file_offset>(received->size()) > (remote_file.size - total_written))
-							{
-								throw std::logic_error("todo received too much");
-							}
-							boost::system::error_code const written = local_file->write(boost::make_iterator_range(received->begin, received->end));
-							if (written)
-							{
-								return written;
-							}
-							total_written += received->size();
+							return ec;
 						}
 					}
 					else if (entry.second.type == "json_v1")
 					{
-						auto ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
+						auto const ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
 						if (ec)
 						{
 							return ec;
