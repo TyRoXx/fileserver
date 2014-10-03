@@ -73,12 +73,12 @@ namespace fileserver
 					return ec;
 				}
 			}
-			boost::optional<Si::error_or<linear_file>> maybe_tree_file = yield.get_one(service.open(tree_digest));
-			if (maybe_tree_file->is_error())
+			Si::error_or<linear_file> maybe_tree_file = *yield.get_one(service.open(tree_digest));
+			if (maybe_tree_file.is_error())
 			{
-				return *maybe_tree_file->error();
+				return *maybe_tree_file.error();
 			}
-			linear_file tree_file = std::move(*maybe_tree_file).get();
+			linear_file tree_file = std::move(maybe_tree_file).get();
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
 			Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));
