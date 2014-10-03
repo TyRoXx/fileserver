@@ -1,7 +1,7 @@
 #include "http_file_service.hpp"
 #include <silicium/coroutine.hpp>
-#include <silicium/connecting_observable.hpp>
-#include <silicium/sending_observable.hpp>
+#include <silicium/asio/connecting_observable.hpp>
+#include <silicium/asio/sending_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/virtualized_observable.hpp>
 #include <silicium/virtualized_source.hpp>

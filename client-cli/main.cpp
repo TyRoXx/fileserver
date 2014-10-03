@@ -2,12 +2,12 @@
 #include "clone.hpp"
 #include "http_file_service.hpp"
 #include <server/path.hpp>
-#include <silicium/connecting_observable.hpp>
+#include <silicium/asio/connecting_observable.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/http/http.hpp>
 #include <silicium/coroutine.hpp>
-#include <silicium/sending_observable.hpp>
-#include <silicium/socket_observable.hpp>
+#include <silicium/asio/sending_observable.hpp>
+#include <silicium/asio/socket_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/observable_source.hpp>
 #include <silicium/for_each.hpp>

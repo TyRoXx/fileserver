@@ -8,12 +8,12 @@
 #include <server/hexadecimal.hpp>
 #include <server/path.hpp>
 #include <silicium/yield_context_sink.hpp>
-#include <silicium/tcp_acceptor.hpp>
+#include <silicium/asio/tcp_acceptor.hpp>
 #include <silicium/coroutine.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/flatten.hpp>
-#include <silicium/socket_observable.hpp>
-#include <silicium/sending_observable.hpp>
+#include <silicium/asio/socket_observable.hpp>
+#include <silicium/asio/sending_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/transform_if_initialized.hpp>
 #include <silicium/observable_source.hpp>

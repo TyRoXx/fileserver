@@ -4,7 +4,7 @@
 #include "service_error.hpp"
 #include <silicium/ptr_observable.hpp>
 #include <silicium/error_or.hpp>
-#include <silicium/socket_observable.hpp>
+#include <silicium/asio/socket_observable.hpp>
 #include <cstdint>
 
 namespace fileserver

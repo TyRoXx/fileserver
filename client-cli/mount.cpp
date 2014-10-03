@@ -2,11 +2,11 @@
 #include "http_file_service.hpp"
 #include <silicium/ptr_observable.hpp>
 #include <silicium/error_or.hpp>
-#include <silicium/connecting_observable.hpp>
+#include <silicium/asio/connecting_observable.hpp>
 #include <silicium/coroutine.hpp>
 #include <silicium/virtualized_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
-#include <silicium/sending_observable.hpp>
+#include <silicium/asio/sending_observable.hpp>
 #include <silicium/virtualized_source.hpp>
 #include <silicium/observable_source.hpp>
 #include <silicium/http/http.hpp>
