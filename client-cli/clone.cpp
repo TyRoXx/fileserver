@@ -18,19 +18,19 @@ namespace fileserver
 	{
 		boost::system::error_code clone_regular_file(file_service &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
 		{
-			auto opening_remote = service.open(blob_digest);
-			auto maybe_remote_file = *yield.get_one(opening_remote);
+			Si::unique_observable<Si::error_or<linear_file>> opening_remote = service.open(blob_digest);
+			Si::error_or<linear_file> maybe_remote_file = *yield.get_one(opening_remote);
 			if (maybe_remote_file.error())
 			{
 				return *maybe_remote_file.error();
 			}
 			linear_file remote_file = std::move(maybe_remote_file).get();
-			auto maybe_local_file = destination.create_regular_file(file_name);
+			Si::error_or<std::unique_ptr<writeable_file>> maybe_local_file = destination.create_regular_file(file_name);
 			if (maybe_local_file.error())
 			{
 				return *maybe_local_file.error();
 			}
-			auto local_file = std::move(maybe_local_file).get();
+			std::unique_ptr<writeable_file> const local_file = std::move(maybe_local_file).get();
 			file_offset total_written = 0;
 			while (total_written < remote_file.size)
 			{
@@ -66,7 +66,7 @@ namespace fileserver
 					return ec;
 				}
 			}
-			auto tree_file_opening = service.open(tree_digest);
+			Si::unique_observable<Si::error_or<linear_file>> tree_file_opening = service.open(tree_digest);
 			boost::optional<Si::error_or<linear_file>> maybe_tree_file = yield.get_one(tree_file_opening);
 			if (maybe_tree_file->is_error())
 			{
@@ -75,7 +75,7 @@ namespace fileserver
 			linear_file tree_file = std::move(*maybe_tree_file).get();
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
-			auto parsed = deserialize_json(std::move(content_source));
+			Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));
 			return Si::visit<boost::system::error_code>(
 				parsed,
 				[&](std::unique_ptr<directory_listing> const &listing) -> boost::system::error_code
@@ -84,7 +84,7 @@ namespace fileserver
 				{
 					if (entry.second.type == "blob")
 					{
-						auto const ec = clone_regular_file(service, entry.first, to_unknown_digest(entry.second.referenced), destination, yield);
+						boost::system::error_code const ec = clone_regular_file(service, entry.first, to_unknown_digest(entry.second.referenced), destination, yield);
 						if (ec)
 						{
 							return ec;
@@ -92,7 +92,7 @@ namespace fileserver
 					}
 					else if (entry.second.type == "json_v1")
 					{
-						auto const ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
+						boost::system::error_code const ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
 						if (ec)
 						{
 							return ec;
@@ -117,7 +117,7 @@ namespace fileserver
 	{
 		return Si::erase_unique(Si::make_coroutine<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
 		{
-			auto ec = clone_recursively(server, root_digest, destination, yield, io);
+			boost::system::error_code const ec = clone_recursively(server, root_digest, destination, yield, io);
 			yield(ec);
 		}));
 	}
