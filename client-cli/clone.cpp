@@ -8,6 +8,7 @@
 #include <silicium/coroutine.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/open.hpp>
+#include <silicium/observable_source.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/asio/write.hpp>
@@ -16,6 +17,35 @@ namespace fileserver
 {
 	namespace
 	{
+		template <class IncomingBytesSource>
+		boost::system::error_code copy_bytes(IncomingBytesSource &&from, file_offset copied_size, writeable_file &to)
+		{
+			file_offset total_written = 0;
+			while (total_written < copied_size)
+			{
+				Si::error_or<Si::incoming_bytes> const received = *Si::get(from);
+				if (received.error())
+				{
+					return *received.error();
+				}
+				if (received->size() == 0)
+				{
+					break;
+				}
+				if (static_cast<file_offset>(received->size()) > (copied_size - total_written))
+				{
+					throw std::logic_error("todo received too much");
+				}
+				boost::system::error_code const written = to.write(boost::make_iterator_range(received->begin, received->end));
+				if (written)
+				{
+					return written;
+				}
+				total_written += received->size();
+			}
+			return boost::system::error_code();
+		}
+
 		boost::system::error_code clone_regular_file(file_service &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
 		{
 			Si::unique_observable<Si::error_or<linear_file>> opening_remote = service.open(blob_digest);
@@ -30,31 +60,9 @@ namespace fileserver
 			{
 				return *maybe_local_file.error();
 			}
+			auto content_source = Si::make_observable_source(Si::ref(remote_file.content), yield);
 			std::unique_ptr<writeable_file> const local_file = std::move(maybe_local_file).get();
-			file_offset total_written = 0;
-			while (total_written < remote_file.size)
-			{
-				Si::error_or<Si::incoming_bytes> const received = *yield.get_one(remote_file.content);
-				if (received.error())
-				{
-					return *received.error();
-				}
-				if (received->size() == 0)
-				{
-					break;
-				}
-				if (static_cast<file_offset>(received->size()) > (remote_file.size - total_written))
-				{
-					throw std::logic_error("todo received too much");
-				}
-				boost::system::error_code const written = local_file->write(boost::make_iterator_range(received->begin, received->end));
-				if (written)
-				{
-					return written;
-				}
-				total_written += received->size();
-			}
-			return boost::system::error_code();
+			return copy_bytes(content_source, remote_file.size, *local_file);
 		}
 
 		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
