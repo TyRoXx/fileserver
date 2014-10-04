@@ -36,12 +36,22 @@ namespace fileserver
 		std::size_t total_written = 0;
 		while (total_written < buffer.size())
 		{
+#ifdef _WIN32
+			DWORD written = 0;
+			DWORD const piece = static_cast<DWORD>(std::min(buffer.size() - total_written, static_cast<size_t>(std::numeric_limits<DWORD>::max())));
+			if (!WriteFile(destination, buffer.begin() + total_written, piece, &written, nullptr))
+			{
+				return boost::system::error_code(GetLastError(), boost::system::native_ecat);
+			}
+			total_written += written;
+#else
 			ssize_t rc = write(destination, buffer.begin() + total_written, buffer.size() - total_written);
 			if (rc < 0)
 			{
 				return boost::system::error_code(errno, boost::system::native_ecat);
 			}
 			total_written += static_cast<size_t>(rc);
+#endif
 		}
 		return boost::system::error_code();
 	}
