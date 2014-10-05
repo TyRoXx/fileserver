@@ -48,7 +48,8 @@ namespace fileserver
 
 		boost::system::error_code clone_regular_file(file_service &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
 		{
-			Si::error_or<linear_file> maybe_remote_file = *yield.get_one(service.open(blob_digest));
+			Si::error_or<linear_file> maybe_remote_file;
+			yield.get_one(service.open(blob_digest), maybe_remote_file);
 			if (maybe_remote_file.error())
 			{
 				return *maybe_remote_file.error();
@@ -73,7 +74,8 @@ namespace fileserver
 					return ec;
 				}
 			}
-			Si::error_or<linear_file> maybe_tree_file = *yield.get_one(service.open(tree_digest));
+			Si::error_or<linear_file> maybe_tree_file;
+			yield.get_one(service.open(tree_digest), maybe_tree_file);
 			if (maybe_tree_file.is_error())
 			{
 				return *maybe_tree_file.error();

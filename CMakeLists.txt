@@ -36,6 +36,7 @@ if(UNIX)
 	add_definitions("-DBOOST_TEST_DYN_LINK")
 endif()
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
+link_directories(${Boost_LIBRARY_DIR})
 
 if(WIN32)
 	#Boost.Asio wants this for no reason
