@@ -35,7 +35,7 @@ find_package(Boost ${SILICIUM_BOOST_REQUIRED} COMPONENTS unit_test_framework thr
 if(UNIX)
 	add_definitions("-DBOOST_TEST_DYN_LINK")
 endif()
-include_directories(SYSTEM ${BOOST_INCLUDE_DIR})
+include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 if(WIN32)
 	#Boost.Asio wants this for no reason
