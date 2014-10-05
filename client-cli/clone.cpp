@@ -54,14 +54,14 @@ namespace fileserver
 			{
 				return *maybe_remote_file.error();
 			}
-			linear_file remote_file = std::move(maybe_remote_file).get();
+			linear_file remote_file = std::move(maybe_remote_file.get());
 			Si::error_or<std::unique_ptr<writeable_file>> maybe_local_file = destination.create_regular_file(file_name);
 			if (maybe_local_file.error())
 			{
 				return *maybe_local_file.error();
 			}
 			auto content_source = Si::make_observable_source(Si::ref(remote_file.content), yield);
-			std::unique_ptr<writeable_file> const local_file = std::move(maybe_local_file).get();
+			std::unique_ptr<writeable_file> const local_file = std::move(maybe_local_file.get());
 			return copy_bytes(content_source, remote_file.size, *local_file);
 		}
 
@@ -80,7 +80,7 @@ namespace fileserver
 			{
 				return *maybe_tree_file.error();
 			}
-			linear_file tree_file = std::move(maybe_tree_file).get();
+			linear_file tree_file = std::move(maybe_tree_file.get());
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
 			Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));

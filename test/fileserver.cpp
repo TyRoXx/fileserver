@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_error)
 {
 	auto source = Si::make_c_str_source("{ ? }");
 	Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
-	BOOST_CHECK_EQUAL(2,
+	BOOST_CHECK_EQUAL(2U,
 		Si::visit<std::size_t>(parsed,
 			[](std::unique_ptr<fileserver::directory_listing> const &) -> std::size_t
 	{

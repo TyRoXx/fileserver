@@ -34,7 +34,7 @@ namespace fileserver
 	inline boost::system::error_code write_all(Si::native_file_handle destination, boost::iterator_range<char const *> buffer)
 	{
 		std::size_t total_written = 0;
-		while (total_written < buffer.size())
+		while (total_written < static_cast<size_t>(buffer.size()))
 		{
 #ifdef _WIN32
 			DWORD written = 0;
@@ -99,7 +99,7 @@ namespace fileserver
 			{
 				return *opened.error();
 			}
-			return Si::make_unique<filesystem_writeable_file>(std::move(opened).get());
+			return Si::make_unique<filesystem_writeable_file>(std::move(opened.get()));
 		}
 
 	private:

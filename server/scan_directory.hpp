@@ -44,7 +44,7 @@ namespace fileserver
 			{
 				return *opening.error();
 			}
-			auto opened = std::move(opening).get();
+			auto &&opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();
 			std::array<char, 8192> buffer;
 			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size())));
