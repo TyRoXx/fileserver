@@ -179,7 +179,7 @@ namespace fileserver
 			auto opened = Si::create_file(root / name);
 			if (opened.error())
 			{
-				return *opened.error();
+				return opened.error();
 			}
 			return Si::make_unique<filesystem_writeable_file>(Si::to_shared(std::move(opened.get())));
 		}

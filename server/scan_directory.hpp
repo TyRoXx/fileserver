@@ -42,7 +42,7 @@ namespace fileserver
 			auto opening = Si::open_reading(file);
 			if (opening.is_error())
 			{
-				return *opening.error();
+				return opening.error();
 			}
 			auto &&opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();

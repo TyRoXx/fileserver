@@ -26,7 +26,7 @@ namespace fileserver
 				Si::error_or<Si::incoming_bytes> const received = *Si::get(from);
 				if (received.error())
 				{
-					return *received.error();
+					return received.error();
 				}
 				if (received->size() == 0)
 				{
@@ -52,13 +52,13 @@ namespace fileserver
 			yield.get_one(service.open(blob_digest), maybe_remote_file);
 			if (maybe_remote_file.error())
 			{
-				return *maybe_remote_file.error();
+				return maybe_remote_file.error();
 			}
 			linear_file remote_file = std::move(maybe_remote_file.get());
 			Si::error_or<std::unique_ptr<writeable_file>> maybe_local_file = destination.create_regular_file(file_name);
 			if (maybe_local_file.error())
 			{
-				return *maybe_local_file.error();
+				return maybe_local_file.error();
 			}
 			auto content_source = Si::make_observable_source(Si::ref(remote_file.content), yield);
 			std::unique_ptr<writeable_file> const local_file = std::move(maybe_local_file.get());
@@ -78,7 +78,7 @@ namespace fileserver
 			yield.get_one(service.open(tree_digest), maybe_tree_file);
 			if (maybe_tree_file.is_error())
 			{
-				return *maybe_tree_file.error();
+				return maybe_tree_file.error();
 			}
 			linear_file tree_file = std::move(maybe_tree_file.get());
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));

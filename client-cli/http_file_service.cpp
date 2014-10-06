@@ -66,7 +66,7 @@ namespace fileserver
 		assert(ec);
 		if (ec->error())
 		{
-			return *ec->error();
+			return ec->error();
 		}
 		assert(ec->get() == buffer.size());
 		return Si::nothing();
@@ -95,7 +95,7 @@ namespace fileserver
 		auto const maybe_socket = connect(yield);
 		if (maybe_socket.is_error())
 		{
-			return yield(*maybe_socket.error());
+			return yield(maybe_socket.error());
 		}
 		auto const socket = maybe_socket.get();
 		{
@@ -103,14 +103,14 @@ namespace fileserver
 			auto const sent = send_all(yield, *socket, request_buffer);
 			if (sent.is_error())
 			{
-				return yield(*sent.error());
+				return yield(sent.error());
 			}
 		}
 		std::array<char, 8192> buffer;
 		auto const received_header = receive_response_header(yield, *socket, buffer);
 		if (received_header.is_error())
 		{
-			return yield(*received_header.error());
+			return yield(received_header.error());
 		}
 		auto const &response_header = received_header.get().first;
 
@@ -135,7 +135,7 @@ namespace fileserver
 		auto const maybe_socket = connect(yield);
 		if (maybe_socket.is_error())
 		{
-			return yield(*maybe_socket.error());
+			return yield(maybe_socket.error());
 		}
 		auto const socket = maybe_socket.get();
 		{
@@ -143,14 +143,14 @@ namespace fileserver
 			auto const sent = send_all(yield, *socket, request_buffer);
 			if (sent.is_error())
 			{
-				return yield(*sent.error());
+				return yield(sent.error());
 			}
 		}
 		std::array<char, 8192> buffer;
 		auto const received_header = receive_response_header(yield, *socket, buffer);
 		if (received_header.is_error())
 		{
-			return yield(*received_header.error());
+			return yield(received_header.error());
 		}
 		auto const &response_header = received_header.get().first;
 		std::size_t const buffered_content = received_header.get().second;
