@@ -54,9 +54,9 @@ namespace
 		}
 	};
 
-	struct directory_manipulator : fileserver::directory_manipulator
+	struct readonly_directory_manipulator : fileserver::directory_manipulator
 	{
-		explicit directory_manipulator(boost::filesystem::path location)
+		explicit readonly_directory_manipulator(boost::filesystem::path location)
 			: location(std::move(location))
 		{
 		}
@@ -68,17 +68,17 @@ namespace
 
 		virtual std::unique_ptr<fileserver::directory_manipulator> edit_subdirectory(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::make_unique<directory_manipulator>(location / name);
+			return Si::make_unique<readonly_directory_manipulator>(location / name);
 		}
 
 		virtual Si::error_or<std::unique_ptr<fileserver::writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::make_unique<writeable_file>();
+			return boost::system::error_code(EPERM, boost::system::system_category());
 		}
 
 		virtual Si::error_or<fileserver::read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			throw std::logic_error("todo");
+			return boost::system::error_code(EPERM, boost::system::system_category());
 		}
 
 	private:
@@ -124,7 +124,7 @@ namespace
 BOOST_AUTO_TEST_CASE(client_clone_empty)
 {
 	fileserver::unknown_digest const root;
-	directory_manipulator dir(".");
+	readonly_directory_manipulator dir(".");
 	boost::asio::io_service io;
 	file_service service;
 	service.files.insert(std::make_pair(root, Si::to_shared(std::vector<char>{'{', '}'})));
