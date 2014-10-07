@@ -73,12 +73,12 @@ namespace
 
 		virtual Si::error_or<std::unique_ptr<fileserver::writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return boost::system::error_code(EPERM, boost::system::system_category());
+			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
 		virtual Si::error_or<fileserver::read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return boost::system::error_code(EPERM, boost::system::system_category());
+			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
 	private:
