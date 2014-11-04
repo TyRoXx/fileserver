@@ -9,7 +9,7 @@
 #include <server/path.hpp>
 #include <silicium/yield_context_sink.hpp>
 #include <silicium/asio/tcp_acceptor.hpp>
-#include <silicium/coroutine.hpp>
+#include <silicium/coroutine_generator.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/flatten.hpp>
 #include <silicium/asio/socket_observable.hpp>
@@ -251,7 +251,7 @@ namespace fileserver
 		std::cerr << "\n";
 		file_repository const &files = scanned.first;
 
-		auto accept_all = Si::make_coroutine<session_handle>([&clients, &files](Si::push_context<session_handle> &yield)
+		auto accept_all = Si::make_coroutine_generator<session_handle>([&clients, &files](Si::push_context<session_handle> &yield)
 		{
 			for (;;)
 			{
@@ -279,7 +279,7 @@ namespace fileserver
 							};
 							serve_client(yield, received, make_sender, shutdown, files);
 						};
-						yield(Si::erase_shared(Si::make_coroutine<Si::nothing>(prepare_socket)));
+						yield(Si::erase_shared(Si::make_coroutine_generator<Si::nothing>(prepare_socket)));
 					},
 					[](boost::system::error_code)
 					{

@@ -1,5 +1,5 @@
 #include "http_file_service.hpp"
-#include <silicium/coroutine.hpp>
+#include <silicium/coroutine_generator.hpp>
 #include <silicium/asio/connecting_observable.hpp>
 #include <silicium/asio/sending_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
@@ -18,12 +18,12 @@ namespace fileserver
 
 	Si::unique_observable<Si::error_or<linear_file>> http_file_service::open(unknown_digest const &name)
 	{
-		return Si::erase_unique(Si::make_coroutine<Si::error_or<linear_file>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
+		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<linear_file>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
 	}
 
 	Si::unique_observable<Si::error_or<file_offset>> http_file_service::size(unknown_digest const &name)
 	{
-		return Si::erase_unique(Si::make_coroutine<Si::error_or<file_offset>>(std::bind(&http_file_service::size_impl, this, std::placeholders::_1, name)));
+		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<file_offset>>(std::bind(&http_file_service::size_impl, this, std::placeholders::_1, name)));
 	}
 
 	Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> http_file_service::connect(
@@ -168,7 +168,7 @@ namespace fileserver
 
 		std::vector<byte> first_part(buffer.begin(), buffer.begin() + buffered_content);
 		file_offset const file_size = boost::lexical_cast<file_offset>(content_length_header->second);
-		linear_file file{file_size, Si::erase_unique(Si::make_coroutine<Si::error_or<Si::incoming_bytes>>(
+		linear_file file{file_size, Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::incoming_bytes>>(
 			[first_part, socket, file_size]
 		(Si::push_context<Si::error_or<Si::incoming_bytes>> yield)
 		{

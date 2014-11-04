@@ -5,7 +5,7 @@
 #include <silicium/asio/connecting_observable.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/http/http.hpp>
-#include <silicium/coroutine.hpp>
+#include <silicium/coroutine_generator.hpp>
 #include <silicium/asio/sending_observable.hpp>
 #include <silicium/asio/socket_observable.hpp>
 #include <silicium/received_from_socket_source.hpp>
@@ -33,7 +33,7 @@ namespace
 		boost::asio::io_service io;
 		boost::asio::ip::tcp::socket socket(io);
 		Si::connecting_observable connector(socket, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
-		auto connecting = Si::make_total_consumer(Si::make_coroutine<Si::nothing>([&connector, &socket, &requested_digest](Si::push_context<Si::nothing> &yield) -> void
+		auto connecting = Si::make_total_consumer(Si::make_coroutine_generator<Si::nothing>([&connector, &socket, &requested_digest](Si::push_context<Si::nothing> &yield) -> void
 		{
 			{
 				boost::optional<boost::system::error_code> const error = yield.get_one(connector);

@@ -5,7 +5,7 @@
 #include <silicium/observable_source.hpp>
 #include <silicium/received_from_socket_source.hpp>
 #include <silicium/ref.hpp>
-#include <silicium/coroutine.hpp>
+#include <silicium/coroutine_generator.hpp>
 #include <silicium/total_consumer.hpp>
 #include <silicium/open.hpp>
 #include <silicium/observable_source.hpp>
@@ -123,7 +123,7 @@ namespace fileserver
 	Si::unique_observable<boost::system::error_code>
 	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, file_service &server, boost::asio::io_service &io)
 	{
-		return Si::erase_unique(Si::make_coroutine<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
+		return Si::erase_unique(Si::make_coroutine_generator<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
 		{
 			boost::system::error_code const ec = clone_recursively(server, root_digest, destination, yield, io);
 			yield(ec);

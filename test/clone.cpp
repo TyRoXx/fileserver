@@ -1,6 +1,6 @@
 #include <client/clone.hpp>
 #include <silicium/for_each.hpp>
-#include <silicium/coroutine.hpp>
+#include <silicium/coroutine_generator.hpp>
 #include <silicium/ready_future.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/unordered_map.hpp>
@@ -101,7 +101,7 @@ namespace
 			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(
 				fileserver::linear_file{
 					sign_cast<fileserver::file_offset>(file->size()),
-					Si::erase_unique(Si::make_coroutine<Si::error_or<Si::incoming_bytes>>([file](Si::push_context<Si::error_or<Si::incoming_bytes>> push)
+					Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::incoming_bytes>>([file](Si::push_context<Si::error_or<Si::incoming_bytes>> push)
 						{
 							push(Si::incoming_bytes(file->data(), file->data() + file->size()));
 						}))
