@@ -4,6 +4,7 @@
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <silicium/fast_variant.hpp>
+#include <boost/range/iterator_range.hpp>
 #ifndef _MSC_VER
 #	include <boost/container/string.hpp>
 #endif

@@ -1,12 +1,13 @@
 #include "http_file_service.hpp"
-#include <silicium/coroutine_generator.hpp>
+#include <silicium/observable/coroutine_generator.hpp>
 #include <silicium/asio/connecting_observable.hpp>
-#include <silicium/asio/sending_observable.hpp>
-#include <silicium/received_from_socket_source.hpp>
-#include <silicium/virtualized_observable.hpp>
-#include <silicium/virtualized_source.hpp>
+#include <silicium/asio/writing_observable.hpp>
+#include <silicium/source/received_from_socket_source.hpp>
+#include <silicium/observable/virtualized.hpp>
+#include <silicium/source/virtualized_source.hpp>
 #include <silicium/to_unique.hpp>
-#include <silicium/observable_source.hpp>
+#include <silicium/source/observable_source.hpp>
+#include <silicium/sink/iterator_sink.hpp>
 
 namespace fileserver
 {
@@ -30,7 +31,7 @@ namespace fileserver
 		Si::yield_context yield)
 	{
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket>(*io);
-		Si::connecting_observable connector(*socket, server);
+		Si::asio::connecting_observable connector(*socket, server);
 		{
 			boost::optional<boost::system::error_code> const ec = yield.get_one(connector);
 			assert(ec);
@@ -45,14 +46,14 @@ namespace fileserver
 	std::vector<char> http_file_service::serialize_request(Si::noexcept_string method, unknown_digest const &requested)
 	{
 		std::vector<char> request_buffer;
-		Si::http::request_header request;
+		Si::http::request request;
 		request.http_version = "HTTP/1.0";
 		request.method = std::move(method);
 		request.path = "/";
 		encode_ascii_hex_digits(requested.begin(), requested.end(), std::back_inserter(request.path));
 		request.arguments["Host"] = server.address().to_string().c_str();
 		auto request_sink = Si::make_container_sink(request_buffer);
-		Si::http::write_header(request_sink, request);
+		Si::http::generate_request(request_sink, request);
 		return request_buffer;
 	}
 
@@ -61,26 +62,25 @@ namespace fileserver
 		boost::asio::ip::tcp::socket &socket,
 		std::vector<char> const &buffer)
 	{
-		Si::sending_observable sending(socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
-		boost::optional<Si::error_or<std::size_t>> const ec = yield.get_one(sending);
+		auto sending = Si::asio::make_writing_observable(socket, Si::make_constant_observable(Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
+		boost::optional<boost::system::error_code> const ec = yield.get_one(sending);
 		assert(ec);
-		if (ec->error())
+		if (*ec)
 		{
-			return ec->error();
+			return *ec;
 		}
-		assert(ec->get() == buffer.size());
 		return Si::nothing();
 	}
 
-	Si::error_or<std::pair<Si::http::response_header, std::size_t>> http_file_service::receive_response_header(
+	Si::error_or<std::pair<Si::http::response, std::size_t>> http_file_service::receive_response_header(
 		Si::yield_context yield,
 		boost::asio::ip::tcp::socket &socket,
 		std::array<char, 8192> &buffer)
 	{
-		Si::socket_observable receiving(socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+		auto receiving = Si::asio::make_reading_observable(socket, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 		auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(receiving), yield));
 		Si::received_from_socket_source response_source(receiving_source);
-		boost::optional<Si::http::response_header> response_header = Si::http::parse_response_header(response_source);
+		boost::optional<Si::http::response> response_header = Si::http::parse_response(response_source);
 		if (!response_header)
 		{
 			throw std::logic_error("todo 1");
@@ -168,19 +168,19 @@ namespace fileserver
 
 		std::vector<byte> first_part(buffer.begin(), buffer.begin() + buffered_content);
 		file_offset const file_size = boost::lexical_cast<file_offset>(content_length_header->second);
-		linear_file file{file_size, Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::incoming_bytes>>(
+		linear_file file{file_size, Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::memory_range>>(
 			[first_part, socket, file_size]
-		(Si::push_context<Si::error_or<Si::incoming_bytes>> yield)
+		(Si::push_context<Si::error_or<Si::memory_range>> yield)
 		{
 			if (!first_part.empty())
 			{
-				yield(Si::incoming_bytes(
+				yield(Si::make_memory_range(
 					reinterpret_cast<char const *>(first_part.data()),
 					reinterpret_cast<char const *>(first_part.data() + first_part.size())));
 			}
 			file_offset receive_counter = first_part.size();
 			std::array<char, 8192> buffer;
-			Si::socket_observable receiving(*socket, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
+			auto receiving = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 			while (receive_counter < file_size)
 			{
 				auto piece = yield.get_one(receiving);

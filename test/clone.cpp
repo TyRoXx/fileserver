@@ -1,7 +1,7 @@
 #include <client/clone.hpp>
-#include <silicium/for_each.hpp>
-#include <silicium/coroutine_generator.hpp>
-#include <silicium/ready_future.hpp>
+#include <silicium/observable/for_each.hpp>
+#include <silicium/observable/coroutine_generator.hpp>
+#include <silicium/observable/ready_future.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/unordered_map.hpp>
 
@@ -48,7 +48,7 @@ namespace
 			return boost::system::error_code();
 		}
 
-		virtual boost::system::error_code write(boost::iterator_range<char const *> const &written) SILICIUM_OVERRIDE
+		virtual boost::system::error_code write(Si::memory_range const &written) SILICIUM_OVERRIDE
 		{
 			return boost::system::error_code();
 		}
@@ -101,9 +101,9 @@ namespace
 			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(
 				fileserver::linear_file{
 					sign_cast<fileserver::file_offset>(file->size()),
-					Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::incoming_bytes>>([file](Si::push_context<Si::error_or<Si::incoming_bytes>> push)
+					Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::memory_range>>([file](Si::push_context<Si::error_or<Si::memory_range>> push)
 						{
-							push(Si::incoming_bytes(file->data(), file->data() + file->size()));
+							push(Si::make_memory_range(file->data(), file->data() + file->size()));
 						}))
 				}
 			)));

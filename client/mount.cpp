@@ -1,16 +1,16 @@
 #include "mount.hpp"
 #include "http_file_service.hpp"
-#include <silicium/ptr_observable.hpp>
+#include <silicium/observable/ptr.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/asio/connecting_observable.hpp>
-#include <silicium/coroutine.hpp>
-#include <silicium/virtualized_observable.hpp>
-#include <silicium/received_from_socket_source.hpp>
-#include <silicium/asio/sending_observable.hpp>
-#include <silicium/virtualized_source.hpp>
-#include <silicium/observable_source.hpp>
+#include <silicium/observable/coroutine.hpp>
+#include <silicium/observable/virtualized.hpp>
+#include <silicium/source/received_from_socket_source.hpp>
+#include <silicium/asio/writing_observable.hpp>
+#include <silicium/source/virtualized_source.hpp>
+#include <silicium/source/observable_source.hpp>
 #include <silicium/http/http.hpp>
-#include <silicium/thread.hpp>
+#include <silicium/observable/thread.hpp>
 #include <silicium/std_threading.hpp>
 #include <silicium/to_unique.hpp>
 #include <server/path.hpp>
@@ -327,21 +327,21 @@ namespace fileserver
 			{
 				local_push_context yield_impl;
 				Si::push_context<Si::nothing> yield(yield_impl);
-				boost::optional<Si::error_or<Si::incoming_bytes>> const piece = yield.get_one(file.source.content);
+				boost::optional<Si::error_or<Si::memory_range>> const piece = yield.get_one(file.source.content);
 				assert(piece);
 				if (piece->is_error())
 				{
 					return -EIO;
 				}
-				int const reading = static_cast<int>(std::min(static_cast<std::size_t>(std::numeric_limits<int>::max()), std::min(size, (*piece)->size())));
-				std::copy((*piece)->begin, (*piece)->begin + reading, buf);
+				int const reading = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, (*piece)->size())));
+				std::copy((*piece)->begin(), (*piece)->begin() + reading, buf);
 				file.already_read += reading;
-				file.buffer.assign((*piece)->begin + reading, (*piece)->end);
+				file.buffer.assign((*piece)->begin() + reading, (*piece)->end());
 				return reading;
 			}
 			else
 			{
-				int const copied = static_cast<int>(std::min(static_cast<std::size_t>(std::numeric_limits<int>::max()), std::min(size, file.buffer.size())));
+				int const copied = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, file.buffer.size())));
 				std::copy(file.buffer.begin(), file.buffer.begin() + copied, buf);
 				file.already_read += copied;
 				file.buffer.erase(file.buffer.begin(), file.buffer.begin() + copied);

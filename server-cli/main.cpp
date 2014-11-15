@@ -7,31 +7,32 @@
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <server/path.hpp>
-#include <silicium/yield_context_sink.hpp>
+#include <silicium/sink/yield_context_sink.hpp>
 #include <silicium/asio/tcp_acceptor.hpp>
-#include <silicium/coroutine_generator.hpp>
-#include <silicium/total_consumer.hpp>
-#include <silicium/flatten.hpp>
-#include <silicium/asio/socket_observable.hpp>
-#include <silicium/asio/sending_observable.hpp>
-#include <silicium/received_from_socket_source.hpp>
-#include <silicium/transform_if_initialized.hpp>
-#include <silicium/observable_source.hpp>
-#include <silicium/for_each.hpp>
+#include <silicium/observable/coroutine_generator.hpp>
+#include <silicium/observable/total_consumer.hpp>
+#include <silicium/observable/flatten.hpp>
+#include <silicium/asio/writing_observable.hpp>
+#include <silicium/asio/reading_observable.hpp>
+#include <silicium/source/received_from_socket_source.hpp>
+#include <silicium/observable/transform_if_initialized.hpp>
+#include <silicium/source/observable_source.hpp>
+#include <silicium/observable/for_each.hpp>
 #include <silicium/optional.hpp>
-#include <silicium/file_source.hpp>
+#include <silicium/source/file_source.hpp>
 #include <silicium/http/http.hpp>
 #include <silicium/to_unique.hpp>
-#include <silicium/thread.hpp>
-#include <silicium/buffering_source.hpp>
+#include <silicium/observable/thread.hpp>
+#include <silicium/source/buffering_source.hpp>
 #include <silicium/open.hpp>
 #include <silicium/read_file.hpp>
-#include <silicium/memory_source.hpp>
+#include <silicium/source/memory_source.hpp>
 #include <silicium/std_threading.hpp>
-#include <silicium/virtualized_source.hpp>
-#include <silicium/transforming_source.hpp>
-#include <silicium/end_observable.hpp>
-#include <silicium/single_source.hpp>
+#include <silicium/source/virtualized_source.hpp>
+#include <silicium/source/transforming_source.hpp>
+#include <silicium/observable/end.hpp>
+#include <silicium/source/single_source.hpp>
+#include <silicium/sink/iterator_sink.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -41,12 +42,7 @@
 
 namespace fileserver
 {
-	using response_part = Si::incoming_bytes;
-
-	boost::iterator_range<char const *> to_range(response_part part)
-	{
-		return boost::make_iterator_range(part.begin, part.end);
-	}
+	using response_part = Si::memory_range;
 
 	struct content_request
 	{
@@ -75,9 +71,9 @@ namespace fileserver
 		return std::move(request);
 	}
 
-	Si::http::response_header make_not_found_response()
+	Si::http::response make_not_found_response()
 	{
-		Si::http::response_header header;
+		Si::http::response header;
 		header.http_version = "HTTP/1.0";
 		header.status = 404;
 		header.status_text = "Not Found";
@@ -85,11 +81,11 @@ namespace fileserver
 		return header;
 	}
 
-	std::vector<char> serialize_response(Si::http::response_header const &header)
+	std::vector<char> serialize_response(Si::http::response const &header)
 	{
 		std::vector<char> serialized;
 		auto sink = Si::make_container_sink(serialized);
-		Si::http::write_header(sink, header);
+		Si::http::generate_response(sink, header);
 		return serialized;
 	}
 
@@ -116,16 +112,16 @@ namespace fileserver
 	void respond(
 		Si::push_context<Si::nothing> &yield,
 		MakeSender const &make_sender,
-		Si::http::request_header const &header,
+		Si::http::request const &header,
 		file_repository const &repository)
 	{
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
 			char const * const begin = data.data();
-			auto sender = make_sender(Si::incoming_bytes(begin, begin + data.size()));
+			auto sender = make_sender(Si::make_memory_range(begin, begin + data.size()));
 			auto result = yield.get_one(sender);
 			assert(result);
-			return !result->is_error();
+			return !*result;
 		};
 
 		auto const request = parse_request_path(header.path);
@@ -147,7 +143,7 @@ namespace fileserver
 		auto &found_file = (*found_file_locations)[0];
 
 		{
-			Si::http::response_header response;
+			Si::http::response response;
 			response.arguments = Si::make_unique<std::map<Si::noexcept_string, Si::noexcept_string>>();
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
@@ -215,7 +211,7 @@ namespace fileserver
 	{
 		auto receive_sync = Si::virtualize_source(Si::make_observable_source(Si::ref(receive), yield));
 		Si::received_from_socket_source receive_bytes(receive_sync);
-		auto header = Si::http::parse_header(receive_bytes);
+		auto header = Si::http::parse_request(receive_bytes);
 		if (!header)
 		{
 			return;
@@ -243,7 +239,7 @@ namespace fileserver
 	{
 		boost::asio::io_service io;
 		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
-		Si::tcp_acceptor clients(acceptor);
+		Si::asio::tcp_acceptor clients(acceptor);
 
 		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
@@ -260,32 +256,23 @@ namespace fileserver
 				{
 					return;
 				}
-				Si::visit<void>(
-					*accepted,
-					[&yield, &files](std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+				std::shared_ptr<boost::asio::ip::tcp::socket> socket = accepted->get(); //TODO handle error
+				auto prepare_socket = [socket, &files](Si::push_context<Si::nothing> &yield)
+				{
+					std::array<char, 1024> receive_buffer;
+					auto received = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
+					auto make_sender = [socket](Si::memory_range sent)
 					{
-						auto prepare_socket = [socket, &files](Si::push_context<Si::nothing> &yield)
-						{
-							std::array<char, 1024> receive_buffer;
-							Si::socket_observable received(*socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-							auto make_sender = [socket](Si::incoming_bytes sent)
-							{
-								return Si::sending_observable(*socket, to_range(sent));
-							};
-							auto shutdown = [socket]()
-							{
-								boost::system::error_code ec; //ignored
-								socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-							};
-							serve_client(yield, received, make_sender, shutdown, files);
-						};
-						yield(Si::erase_shared(Si::make_coroutine_generator<Si::nothing>(prepare_socket)));
-					},
-					[](boost::system::error_code)
+						return Si::asio::make_writing_observable(*socket, Si::make_constant_observable(sent));
+					};
+					auto shutdown = [socket]()
 					{
-						throw std::logic_error("to do");
-					}
-				);
+						boost::system::error_code ec; //ignored
+						socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+					};
+					serve_client(yield, received, make_sender, shutdown, files);
+				};
+				yield(Si::erase_shared(Si::make_coroutine_generator<Si::nothing>(prepare_socket)));
 			}
 		});
 		auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));

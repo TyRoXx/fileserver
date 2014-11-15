@@ -2,9 +2,9 @@
 #define FILESERVER_LINEAR_FILE_HPP
 
 #include "service_error.hpp"
-#include <silicium/ptr_observable.hpp>
+#include <silicium/observable/ptr.hpp>
 #include <silicium/error_or.hpp>
-#include <silicium/asio/socket_observable.hpp>
+#include <silicium/asio/reading_observable.hpp>
 #include <cstdint>
 
 namespace fileserver
@@ -17,7 +17,7 @@ namespace fileserver
 #endif
 	{
 		file_offset size;
-		Si::unique_observable<Si::error_or<Si::incoming_bytes>> content;
+		Si::unique_observable<Si::error_or<Si::memory_range>> content;
 
 #ifdef _MSC_VER
 		linear_file()

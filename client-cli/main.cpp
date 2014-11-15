@@ -3,24 +3,25 @@
 #include "client/http_file_service.hpp"
 #include <server/path.hpp>
 #include <silicium/asio/connecting_observable.hpp>
-#include <silicium/total_consumer.hpp>
+#include <silicium/observable/total_consumer.hpp>
 #include <silicium/http/http.hpp>
-#include <silicium/coroutine_generator.hpp>
-#include <silicium/asio/sending_observable.hpp>
-#include <silicium/asio/socket_observable.hpp>
-#include <silicium/received_from_socket_source.hpp>
-#include <silicium/observable_source.hpp>
-#include <silicium/for_each.hpp>
-#include <silicium/virtualized_source.hpp>
+#include <silicium/sink/iterator_sink.hpp>
+#include <silicium/observable/coroutine_generator.hpp>
+#include <silicium/asio/writing_observable.hpp>
+#include <silicium/asio/reading_observable.hpp>
+#include <silicium/source/received_from_socket_source.hpp>
+#include <silicium/source/observable_source.hpp>
+#include <silicium/observable/for_each.hpp>
+#include <silicium/source/virtualized_source.hpp>
 #include <boost/program_options.hpp>
 #include <boost/asio/io_service.hpp>
 #include <iostream>
 
 namespace
 {
-	Si::http::request_header make_get_request(Si::noexcept_string host, Si::noexcept_string path)
+	Si::http::request make_get_request(Si::noexcept_string host, Si::noexcept_string path)
 	{
-		Si::http::request_header header;
+		Si::http::request header;
 		header.http_version = "HTTP/1.0";
 		header.method = "GET";
 		header.path = std::move(path);
@@ -32,7 +33,7 @@ namespace
 	{
 		boost::asio::io_service io;
 		boost::asio::ip::tcp::socket socket(io);
-		Si::connecting_observable connector(socket, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
+		Si::asio::connecting_observable connector(socket, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4::loopback(), 8080));
 		auto connecting = Si::make_total_consumer(Si::make_coroutine_generator<Si::nothing>([&connector, &socket, &requested_digest](Si::push_context<Si::nothing> &yield) -> void
 		{
 			{
@@ -47,11 +48,11 @@ namespace
 			{
 				std::vector<char> send_buffer;
 				auto send_sink = Si::make_container_sink(send_buffer);
-				Si::http::write_header(send_sink, make_get_request("localhost", "/" + fileserver::format_digest<Si::noexcept_string>(requested_digest)));
-				Si::sending_observable sending(socket, boost::make_iterator_range(send_buffer.data(), send_buffer.data() + send_buffer.size()));
-				boost::optional<Si::error_or<std::size_t>> const error = yield.get_one(sending);
+				Si::http::generate_request(send_sink, make_get_request("localhost", "/" + fileserver::format_digest<Si::noexcept_string>(requested_digest)));
+				auto sending = Si::asio::make_writing_observable(socket, Si::make_constant_observable(Si::make_memory_range(send_buffer.data(), send_buffer.data() + send_buffer.size())));
+				boost::optional<boost::system::error_code> const error = yield.get_one(sending);
 				assert(error);
-				if (error->is_error())
+				if (*error)
 				{
 					return;
 				}
@@ -59,10 +60,10 @@ namespace
 
 			{
 				std::array<char, 4096> receive_buffer;
-				auto socket_source = Si::virtualize_source(Si::make_observable_source(Si::socket_observable(socket, boost::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield));
+				auto socket_source = Si::virtualize_source(Si::make_observable_source(Si::asio::make_reading_observable(socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield));
 				{
 					Si::received_from_socket_source response_source(socket_source);
-					boost::optional<Si::http::response_header> const response = Si::http::parse_response_header(response_source);
+					boost::optional<Si::http::response> const response = Si::http::parse_response(response_source);
 					if (!response)
 					{
 						return;
@@ -76,7 +77,7 @@ namespace
 						break;
 					}
 					auto const &bytes = piece->get();
-					std::cout.write(bytes.begin, std::distance(bytes.begin, bytes.end));
+					std::cout.write(bytes.begin(), std::distance(bytes.begin(), bytes.end()));
 				}
 			}
 		}));

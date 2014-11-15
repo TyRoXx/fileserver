@@ -1,7 +1,7 @@
 #ifndef FILESERVER_SOURCE_STREAM_HPP
 #define FILESERVER_SOURCE_STREAM_HPP
 
-#include <silicium/source.hpp>
+#include <silicium/source/source.hpp>
 #include <silicium/config.hpp>
 
 namespace fileserver

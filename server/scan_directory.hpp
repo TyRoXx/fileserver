@@ -5,10 +5,10 @@
 #include <server/file_repository.hpp>
 #include <server/directory_listing.hpp>
 #include <silicium/error_or.hpp>
-#include <silicium/virtualized_source.hpp>
-#include <silicium/file_source.hpp>
-#include <silicium/single_source.hpp>
-#include <silicium/transforming_source.hpp>
+#include <silicium/source/virtualized_source.hpp>
+#include <silicium/source/file_source.hpp>
+#include <silicium/source/single_source.hpp>
+#include <silicium/source/transforming_source.hpp>
 #include <silicium/open.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <sys/stat.h>
@@ -17,7 +17,7 @@ namespace fileserver
 {
 	namespace detail
 	{
-		inline Si::error_or<boost::uint64_t> file_size(Si::native_file_handle file)
+		inline Si::error_or<boost::uint64_t> file_size(Si::native_file_descriptor file)
 		{
 #ifdef _WIN32
 			LARGE_INTEGER size;
@@ -47,8 +47,8 @@ namespace fileserver
 			auto &&opened = std::move(opening).get();
 			auto const size = file_size(opened.handle).get();
 			std::array<char, 8192> buffer;
-			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size())));
-			auto hashable_content = Si::make_transforming_source<boost::iterator_range<char const *>>(
+			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
+			auto hashable_content = Si::make_transforming_source(
 				content,
 				[&buffer](Si::file_read_result piece)
 			{

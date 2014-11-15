@@ -1,14 +1,14 @@
 #include "clone.hpp"
 #include "http_file_service.hpp"
 #include <server/directory_listing.hpp>
-#include <silicium/virtualized_source.hpp>
-#include <silicium/observable_source.hpp>
-#include <silicium/received_from_socket_source.hpp>
-#include <silicium/ref.hpp>
-#include <silicium/coroutine_generator.hpp>
-#include <silicium/total_consumer.hpp>
+#include <silicium/source/virtualized_source.hpp>
+#include <silicium/source/observable_source.hpp>
+#include <silicium/source/received_from_socket_source.hpp>
+#include <silicium/observable/ref.hpp>
+#include <silicium/observable/coroutine_generator.hpp>
+#include <silicium/observable/total_consumer.hpp>
 #include <silicium/open.hpp>
-#include <silicium/observable_source.hpp>
+#include <silicium/source/observable_source.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/asio/write.hpp>
@@ -23,7 +23,7 @@ namespace fileserver
 			file_offset total_written = 0;
 			while (total_written < copied_size)
 			{
-				Si::error_or<Si::incoming_bytes> const received = *Si::get(from);
+				Si::error_or<Si::memory_range> const received = *Si::get(from);
 				if (received.error())
 				{
 					return received.error();
@@ -36,7 +36,7 @@ namespace fileserver
 				{
 					throw std::logic_error("todo received too much");
 				}
-				boost::system::error_code const written = to.write(boost::make_iterator_range(received->begin, received->end));
+				boost::system::error_code const written = to.write(received.get());
 				if (written)
 				{
 					return written;
