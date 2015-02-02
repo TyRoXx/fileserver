@@ -10,33 +10,13 @@
 #include <silicium/source/single_source.hpp>
 #include <silicium/source/transforming_source.hpp>
 #include <silicium/open.hpp>
+#include <silicium/file_size.hpp>
 #include <boost/filesystem/operations.hpp>
-#include <sys/stat.h>
 
 namespace fileserver
 {
 	namespace detail
 	{
-		inline Si::error_or<boost::uint64_t> file_size(Si::native_file_descriptor file)
-		{
-#ifdef _WIN32
-			LARGE_INTEGER size;
-			if (!GetFileSizeEx(file, &size))
-			{
-				return boost::system::error_code(GetLastError(), boost::system::system_category());
-			}
-			assert(size.QuadPart >= 0);
-			return static_cast<boost::uint64_t>(size.QuadPart);
-#else
-			struct stat buffer;
-			if (fstat(file, &buffer) < 0)
-			{
-				return boost::system::error_code(errno, boost::system::system_category());
-			}
-			return static_cast<boost::uint64_t>(buffer.st_size);
-#endif
-		}
-
 		inline Si::error_or<std::pair<typed_reference, location>> hash_file(boost::filesystem::path const &file)
 		{
 			auto opening = Si::open_reading(file);
@@ -45,7 +25,12 @@ namespace fileserver
 				return opening.error();
 			}
 			auto &&opened = std::move(opening).get();
-			auto const size = file_size(opened.handle).get();
+			Si::optional<boost::uintmax_t> const size = Si::file_size(opened.handle).get();
+			if (!size)
+			{
+				//TODO: return a proper error_code for this problem
+				throw std::runtime_error("hash_file works only for regular files");
+			}
 			std::array<char, 8192> buffer;
 			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
 			auto hashable_content = Si::make_transforming_source(
@@ -57,7 +42,7 @@ namespace fileserver
 				return boost::make_iterator_range(buffer.data(), buffer.data() + length);
 			});
 			auto sha256_digest = fileserver::sha256(hashable_content);
-			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), size}});
+			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), *size}});
 		}
 	}
 
