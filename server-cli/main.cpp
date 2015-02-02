@@ -7,7 +7,6 @@
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <server/path.hpp>
-#include <silicium/sink/yield_context_sink.hpp>
 #include <silicium/asio/tcp_acceptor.hpp>
 #include <silicium/observable/coroutine_generator.hpp>
 #include <silicium/observable/total_consumer.hpp>
@@ -19,10 +18,11 @@
 #include <silicium/source/observable_source.hpp>
 #include <silicium/observable/for_each.hpp>
 #include <silicium/optional.hpp>
+#include <silicium/observable/thread.hpp>
 #include <silicium/source/file_source.hpp>
 #include <silicium/http/http.hpp>
 #include <silicium/to_unique.hpp>
-#include <silicium/observable/thread.hpp>
+#include <silicium/observable/thread_generator.hpp>
 #include <silicium/source/buffering_source.hpp>
 #include <silicium/open.hpp>
 #include <silicium/read_file.hpp>
@@ -39,6 +39,7 @@
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/thread/mutex.hpp>
 
 namespace fileserver
 {
@@ -162,7 +163,7 @@ namespace fileserver
 		{
 		case request_type::get:
 			{
-				auto reading = Si::make_thread<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield)
+				auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
 				{
 					yield(Si::visit<std::vector<char>>(
 						found_file,
@@ -175,8 +176,9 @@ namespace fileserver
 							return location.content;
 						}
 					));
+					return {};
 				});
-				boost::optional<std::vector<char>> const body = yield.get_one(reading);
+				auto const &body = yield.get_one(reading);
 				if (!body)
 				{
 					return;
@@ -239,7 +241,7 @@ namespace fileserver
 	{
 		boost::asio::io_service io;
 		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
-		Si::asio::tcp_acceptor clients(acceptor);
+		auto clients = Si::asio::make_tcp_acceptor(&acceptor);
 
 		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
@@ -263,7 +265,9 @@ namespace fileserver
 					auto received = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
 					auto make_sender = [socket](Si::memory_range sent)
 					{
-						return Si::asio::make_writing_observable(*socket, Si::make_constant_observable(sent));
+						auto sender = Si::asio::make_writing_observable(*socket);
+						sender.set_buffer(sent);
+						return sender;
 					};
 					auto shutdown = [socket]()
 					{

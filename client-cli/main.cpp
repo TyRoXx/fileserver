@@ -49,7 +49,8 @@ namespace
 				std::vector<char> send_buffer;
 				auto send_sink = Si::make_container_sink(send_buffer);
 				Si::http::generate_request(send_sink, make_get_request("localhost", "/" + fileserver::format_digest<Si::noexcept_string>(requested_digest)));
-				auto sending = Si::asio::make_writing_observable(socket, Si::make_constant_observable(Si::make_memory_range(send_buffer.data(), send_buffer.data() + send_buffer.size())));
+				auto sending = Si::asio::make_writing_observable(socket);
+				sending.set_buffer(Si::make_memory_range(send_buffer.data(), send_buffer.data() + send_buffer.size()));
 				boost::optional<boost::system::error_code> const error = yield.get_one(sending);
 				assert(error);
 				if (*error)

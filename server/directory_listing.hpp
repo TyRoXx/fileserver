@@ -111,7 +111,7 @@ namespace fileserver
 			{
 				throw std::logic_error("todo 3");
 			}
-			boost::optional<unknown_digest> const &parsed_content = parse_digest(content.GetString(), content.GetString() + content.GetStringLength());
+			auto const &parsed_content = parse_digest(content.GetString(), content.GetString() + content.GetStringLength());
 			if (!parsed_content)
 			{
 				throw std::logic_error("todo 4");

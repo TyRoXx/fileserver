@@ -1,7 +1,7 @@
 #ifndef FILESERVER_SERVICE_ERROR_HPP
 #define FILESERVER_SERVICE_ERROR_HPP
 
-#include <silicium/override.hpp>
+#include <silicium/config.hpp>
 #include <boost/system/system_error.hpp>
 
 namespace fileserver

@@ -35,7 +35,7 @@ namespace fileserver
 		Ch Take()
 		{
 			auto result = Peek();
-			buffer = boost::none;
+			buffer = Si::none;
 			++position;
 			return result;
 		}
@@ -80,7 +80,7 @@ namespace fileserver
 
 		Source source;
 		std::size_t position = 0;
-		boost::optional<char> buffer;
+		Si::optional<char> buffer;
 	};
 
 	template <class Source>

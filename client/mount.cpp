@@ -10,7 +10,7 @@
 #include <silicium/source/virtualized_source.hpp>
 #include <silicium/source/observable_source.hpp>
 #include <silicium/http/http.hpp>
-#include <silicium/observable/thread.hpp>
+#include <silicium/observable/thread_generator.hpp>
 #include <silicium/std_threading.hpp>
 #include <silicium/to_unique.hpp>
 #include <server/path.hpp>

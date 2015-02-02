@@ -62,7 +62,8 @@ namespace fileserver
 		boost::asio::ip::tcp::socket &socket,
 		std::vector<char> const &buffer)
 	{
-		auto sending = Si::asio::make_writing_observable(socket, Si::make_constant_observable(Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
+		auto sending = Si::asio::make_writing_observable(socket);
+		sending.set_buffer(Si::make_memory_range(buffer.data(), buffer.data() + buffer.size()));
 		boost::optional<boost::system::error_code> const ec = yield.get_one(sending);
 		assert(ec);
 		if (*ec)
