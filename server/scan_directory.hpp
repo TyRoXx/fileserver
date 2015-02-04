@@ -37,9 +37,8 @@ namespace fileserver
 				content,
 				[&buffer](Si::file_read_result piece)
 			{
-				std::size_t length = piece.get(); //may throw
-				assert(length <= buffer.size());
-				return boost::make_iterator_range(buffer.data(), buffer.data() + length);
+				assert(static_cast<size_t>(piece.get().size()) <= buffer.size());
+				return piece.get(); //may throw
 			});
 			auto sha256_digest = fileserver::sha256(hashable_content);
 			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}}, location{file_system_location{path(file), *size}});

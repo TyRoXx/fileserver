@@ -138,12 +138,12 @@ namespace fileserver
 			return Si::to_unique(
 				Si::make_transforming_source(
 					Si::make_file_source(file->handle, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size())),
-					[this](Si::error_or<std::size_t> bytes_read)
+					[this](Si::error_or<Si::memory_range> bytes_read)
 					{
-						return Si::map(bytes_read, [this](std::size_t bytes_read) -> Si::memory_range
+						return Si::map(bytes_read, [this](Si::memory_range bytes_read) -> Si::memory_range
 						{
-							assert(bytes_read < buffer.size());
-							return Si::make_memory_range(buffer.data(), buffer.data() + bytes_read);
+							assert(static_cast<size_t>(bytes_read.size()) < buffer.size());
+							return bytes_read;
 						});
 					})
 				);
