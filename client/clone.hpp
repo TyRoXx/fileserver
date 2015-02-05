@@ -165,7 +165,7 @@ namespace fileserver
 		virtual boost::system::error_code require_exists() SILICIUM_OVERRIDE
 		{
 			boost::system::error_code ec;
-			boost::filesystem::create_directories(root);
+			boost::filesystem::create_directories(root, ec);
 			return ec;
 		}
 
@@ -177,7 +177,7 @@ namespace fileserver
 		virtual Si::error_or<std::unique_ptr<writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
 			auto opened = Si::create_file(root / name);
-			if (opened.error())
+			if (opened.is_error())
 			{
 				return opened.error();
 			}

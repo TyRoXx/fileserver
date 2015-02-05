@@ -24,7 +24,7 @@ namespace fileserver
 			while (total_written < copied_size)
 			{
 				Si::error_or<Si::memory_range> const received = *Si::get(from);
-				if (received.error())
+				if (received.is_error())
 				{
 					return received.error();
 				}
@@ -50,13 +50,13 @@ namespace fileserver
 		{
 			Si::error_or<linear_file> maybe_remote_file;
 			yield.get_one(service.open(blob_digest), maybe_remote_file);
-			if (maybe_remote_file.error())
+			if (maybe_remote_file.is_error())
 			{
 				return maybe_remote_file.error();
 			}
 			linear_file remote_file = std::move(maybe_remote_file.get());
 			Si::error_or<std::unique_ptr<writeable_file>> maybe_local_file = destination.create_regular_file(file_name);
-			if (maybe_local_file.error())
+			if (maybe_local_file.is_error())
 			{
 				return maybe_local_file.error();
 			}
