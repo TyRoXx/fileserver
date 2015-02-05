@@ -78,6 +78,7 @@ namespace fileserver
 		header.http_version = "HTTP/1.0";
 		header.status = 404;
 		header.status_text = "Not Found";
+		header.arguments = Si::make_unique<Si::http::response::arguments_table>();
 		(*header.arguments)["Connection"] = "close";
 		return header;
 	}
