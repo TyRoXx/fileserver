@@ -379,6 +379,10 @@ namespace fileserver
 #ifdef __linux__
 		chan_deleter deleter;
 		deleter.mount_point = fileserver::path(mount_point);
+
+		//remove an existing mount because FUSE did not do that if the previous process was killed
+		fuse_unmount(mount_point.c_str(), nullptr);
+
 		fuse_args args{};
 		std::unique_ptr<fuse_chan, chan_deleter> chan(fuse_mount(mount_point.c_str(), &args), std::move(deleter));
 		if (!chan)
