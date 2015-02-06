@@ -24,7 +24,7 @@ namespace fileserver
 		{
 		}
 
-		linear_file(file_offset size, Si::unique_observable<Si::error_or<Si::incoming_bytes>> content)
+		linear_file(file_offset size, Si::unique_observable<Si::error_or<Si::memory_range>> content)
 			: size(size)
 			, content(std::move(content))
 		{

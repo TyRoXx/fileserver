@@ -47,6 +47,30 @@ namespace fileserver
 	{
 		std::unique_ptr<readable_file> readable;
 		std::unique_ptr<writeable_file> writeable;
+
+#if !SILICIUM_COMPILER_GENERATES_MOVES
+		read_write_file() BOOST_NOEXCEPT
+		{}
+
+		read_write_file(read_write_file &&other) BOOST_NOEXCEPT
+			: readable(std::move(other.readable))
+			, writeable(std::move(other.writeable))
+		{
+		}
+
+		read_write_file &operator = (read_write_file &&other) BOOST_NOEXCEPT
+		{
+			readable = std::move(other.readable);
+			writeable = std::move(other.writeable);
+			return *this;
+		}
+
+		read_write_file(std::unique_ptr<readable_file> readable, std::unique_ptr<writeable_file> writeable) BOOST_NOEXCEPT
+			: readable(std::move(readable))
+			, writeable(std::move(writeable))
+		{
+		}
+#endif
 	};
 
 	struct directory_manipulator
@@ -85,6 +109,25 @@ namespace fileserver
 		return boost::system::error_code();
 	}
 
+	inline boost::system::error_code seek_absolute(Si::native_file_descriptor file, boost::uint64_t destination)
+	{
+#ifdef _WIN32
+		LARGE_INTEGER destinationConverted;
+		destinationConverted.QuadPart = destination;
+		if (!SetFilePointerEx(file, destinationConverted, nullptr, SEEK_SET))
+		{
+			return boost::system::error_code(GetLastError(), boost::system::native_ecat);
+		}
+#else
+		auto position = lseek(file, destination, SEEK_SET);
+		if (position != destination)
+		{
+			return boost::system::error_code(errno, boost::system::posix_category);
+		}
+#endif
+		return boost::system::error_code();
+	}
+
 	struct filesystem_writeable_file : writeable_file
 	{
 		explicit filesystem_writeable_file(std::shared_ptr<Si::file_handle> file)
@@ -94,11 +137,7 @@ namespace fileserver
 
 		virtual boost::system::error_code seek(file_offset destination) SILICIUM_OVERRIDE
 		{
-			if (lseek(file->handle, destination, SEEK_SET) != destination)
-			{
-				return boost::system::error_code(errno, boost::system::posix_category);
-			}
-			return boost::system::error_code();
+			return seek_absolute(file->handle, destination);
 		}
 
 		virtual boost::system::error_code write(Si::memory_range const &written) SILICIUM_OVERRIDE
@@ -131,9 +170,10 @@ namespace fileserver
 			>
 		> read(file_offset begin) SILICIUM_OVERRIDE
 		{
-			if (lseek(file->handle, begin, SEEK_SET) != begin)
+			boost::system::error_code ec = seek_absolute(file->handle, begin);
+			if (ec)
 			{
-				return boost::system::error_code(errno, boost::system::posix_category);
+				return ec;
 			}
 			return Si::to_unique(
 				Si::make_transforming_source(
@@ -186,7 +226,7 @@ namespace fileserver
 
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::map(Si::open_read_write(root / name), [](Si::file_handle file)
+			return Si::map(Si::open_read_write(root / name), [](Si::file_handle file) -> read_write_file
 			{
 				auto shared_file = Si::to_shared(std::move(file));
 				return read_write_file

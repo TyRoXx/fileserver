@@ -100,7 +100,7 @@ namespace
 			auto file = it->second;
 			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(
 				fileserver::linear_file{
-					sign_cast<fileserver::file_offset>(file->size()),
+					static_cast<fileserver::file_offset>(file->size()),
 					Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::memory_range>>([file](Si::push_context<Si::error_or<Si::memory_range>> push)
 						{
 							push(Si::make_memory_range(file->data(), file->data() + file->size()));
