@@ -50,8 +50,14 @@ namespace fileserver
 		unknown_digest requested_file;
 	};
 
+	struct root_request
+	{
+	};
+
+	typedef Si::fast_variant<root_request, content_request> parsed_request;
+
 	template <class String>
-	Si::optional<content_request> parse_request_path(String const &path)
+	Si::optional<parsed_request> parse_request_path(String const &path)
 	{
 		if (path.empty())
 		{
@@ -61,6 +67,10 @@ namespace fileserver
 		if (*digest_begin == '/')
 		{
 			++digest_begin;
+		}
+		if (digest_begin == path.end())
+		{
+			return root_request();
 		}
 		content_request request;
 		auto digest = parse_digest(digest_begin, path.end());
@@ -115,7 +125,8 @@ namespace fileserver
 		Si::push_context<Si::nothing> &yield,
 		MakeSender const &make_sender,
 		Si::http::request const &header,
-		file_repository const &repository)
+		file_repository const &repository,
+		digest const &root)
 	{
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
@@ -133,7 +144,16 @@ namespace fileserver
 			return;
 		}
 
-		std::vector<location> const * const found_file_locations = repository.find_location(request->requested_file);
+		std::vector<location> const * const found_file_locations = repository.find_location(
+			Si::visit<unknown_digest>(
+				*request,
+				[&root](root_request) -> unknown_digest { return to_unknown_digest(root); },
+				[](content_request const &content) -> unknown_digest
+				{
+					return content.requested_file;
+				}
+			)
+		);
 		if (!found_file_locations)
 		{
 			try_send(serialize_response(make_not_found_response()));
@@ -210,7 +230,8 @@ namespace fileserver
 		ReceiveObservable &receive,
 		MakeSender const &make_sender,
 		Shutdown const &shutdown,
-		file_repository const &repository)
+		file_repository const &repository,
+		digest const &root)
 	{
 		auto receive_sync = Si::virtualize_source(Si::make_observable_source(Si::ref(receive), yield));
 		Si::received_from_socket_source receive_bytes(receive_sync);
@@ -220,7 +241,7 @@ namespace fileserver
 			return;
 		}
 
-		respond(yield, make_sender, *header, repository);
+		respond(yield, make_sender, *header, repository, root);
 		shutdown();
 
 		while (Si::get(receive_bytes))
@@ -246,11 +267,13 @@ namespace fileserver
 
 		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
-		print(std::cerr, scanned.second);
+		typed_reference const &root = scanned.second;
+		print(std::cerr, root);
 		std::cerr << "\n";
 		file_repository const &files = scanned.first;
+		digest const &root_digest = root.referenced;
 
-		auto accept_all = Si::make_coroutine_generator<session_handle>([&clients, &files](Si::push_context<session_handle> &yield)
+		auto accept_all = Si::make_coroutine_generator<session_handle>([&clients, &files, &root_digest](Si::push_context<session_handle> &yield)
 		{
 			for (;;)
 			{
@@ -260,7 +283,7 @@ namespace fileserver
 					return;
 				}
 				std::shared_ptr<boost::asio::ip::tcp::socket> socket = accepted->get(); //TODO handle error
-				auto prepare_socket = [socket, &files](Si::push_context<Si::nothing> &yield)
+				auto prepare_socket = [socket, &files, &root_digest](Si::push_context<Si::nothing> &yield)
 				{
 					std::array<char, 1024> receive_buffer;
 					auto received = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
@@ -275,7 +298,7 @@ namespace fileserver
 						boost::system::error_code ec; //ignored
 						socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
 					};
-					serve_client(yield, received, make_sender, shutdown, files);
+					serve_client(yield, received, make_sender, shutdown, files, root_digest);
 				};
 				yield(Si::erase_shared(Si::make_coroutine_generator<Si::nothing>(prepare_socket)));
 			}
