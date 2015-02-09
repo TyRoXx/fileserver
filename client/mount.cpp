@@ -96,7 +96,7 @@ namespace fileserver
 				SILICIUM_UNREACHABLE();
 			}
 
-			virtual void get_one(Si::observable<Si::nothing> &target) SILICIUM_OVERRIDE
+			virtual void get_one(Si::observable<Si::nothing, Si::ptr_observer<Si::observer<Si::nothing>>> &target) SILICIUM_OVERRIDE
 			{
 				Si::detail::event<Si::std_threading> waiting;
 				waiting.block(Si::ref(target));

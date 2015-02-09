@@ -15,6 +15,7 @@
 #include <silicium/asio/reading_observable.hpp>
 #include <silicium/source/received_from_socket_source.hpp>
 #include <silicium/observable/transform_if_initialized.hpp>
+#include <silicium/observable/erase_shared.hpp>
 #include <silicium/source/observable_source.hpp>
 #include <silicium/observable/for_each.hpp>
 #include <silicium/optional.hpp>

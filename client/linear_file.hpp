@@ -2,7 +2,7 @@
 #define FILESERVER_LINEAR_FILE_HPP
 
 #include "service_error.hpp"
-#include <silicium/observable/ptr.hpp>
+#include <silicium/observable/erase_unique.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/asio/reading_observable.hpp>
 #include <cstdint>
