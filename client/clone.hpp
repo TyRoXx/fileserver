@@ -120,7 +120,7 @@ namespace fileserver
 		}
 #else
 		auto position = lseek(file, destination, SEEK_SET);
-		if (position != destination)
+		if (static_cast<boost::uint64_t>(position) != destination)
 		{
 			return boost::system::error_code(errno, boost::system::posix_category);
 		}

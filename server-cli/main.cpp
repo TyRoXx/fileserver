@@ -70,7 +70,7 @@ namespace fileserver
 		}
 		if (digest_begin == path.end())
 		{
-			return root_request();
+			return parsed_request(root_request());
 		}
 		content_request request;
 		auto digest = parse_digest(digest_begin, path.end());
@@ -79,7 +79,7 @@ namespace fileserver
 			return Si::none;
 		}
 		request.requested_file = std::move(*digest);
-		return std::move(request);
+		return parsed_request(std::move(request));
 	}
 
 	Si::http::response make_not_found_response()
