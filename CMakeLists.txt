@@ -53,6 +53,11 @@ find_package(Silicium REQUIRED)
 
 include_directories(SYSTEM ${SILICIUM_INCLUDE_DIR})
 
+find_package(UriParser REQUIRED)
+if(URIPARSER_FOUND)
+	include_directories(SYSTEM ${URIPARSER_INCLUDE_DIR})
+endif()
+
 include_directories(SYSTEM "dependencies/rapidjson/include")
 
 if(UNIX)

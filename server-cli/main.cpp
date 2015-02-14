@@ -22,6 +22,7 @@
 #include <silicium/observable/thread.hpp>
 #include <silicium/source/file_source.hpp>
 #include <silicium/http/http.hpp>
+#include <silicium/http/uri.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/observable/thread_generator.hpp>
 #include <silicium/source/buffering_source.hpp>
@@ -55,26 +56,27 @@ namespace fileserver
 	{
 	};
 
-	typedef Si::fast_variant<root_request, content_request> parsed_request;
-
-	template <class String>
-	Si::optional<parsed_request> parse_request_path(String const &path)
+	struct browse_request
 	{
-		if (path.empty())
-		{
-			return Si::none;
-		}
-		auto digest_begin = path.begin();
-		if (*digest_begin == '/')
-		{
-			++digest_begin;
-		}
-		if (digest_begin == path.end())
+	};
+
+	typedef Si::fast_variant<root_request, content_request, browse_request> parsed_request;
+
+	Si::optional<parsed_request> parse_request_path(Si::memory_range const &path)
+	{
+		boost::optional<Si::http::uri> const parsed_path = Si::http::parse_uri(path);
+		if (!parsed_path || parsed_path->path.empty())
 		{
 			return parsed_request(root_request());
 		}
+
+		if (parsed_path->path.front() == Si::make_c_str_range("browse"))
+		{
+			return parsed_request(browse_request());
+		}
+
 		content_request request;
-		auto digest = parse_digest(digest_begin, path.end());
+		auto digest = parse_digest(parsed_path->path.front());
 		if (!digest)
 		{
 			return Si::none;
@@ -138,7 +140,7 @@ namespace fileserver
 			return !*result;
 		};
 
-		auto const request = parse_request_path(header.path);
+		auto const request = parse_request_path(Si::make_memory_range(header.path));
 		if (!request)
 		{
 			try_send(serialize_response(make_not_found_response()));
@@ -152,7 +154,8 @@ namespace fileserver
 				[](content_request const &content) -> unknown_digest
 				{
 					return content.requested_file;
-				}
+				},
+				[](browse_request) -> unknown_digest { throw std::logic_error("not implemented"); }
 			)
 		);
 		if (!found_file_locations)
