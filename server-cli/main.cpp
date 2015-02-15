@@ -8,9 +8,7 @@
 #include <server/hexadecimal.hpp>
 #include <server/path.hpp>
 #include <silicium/asio/tcp_acceptor.hpp>
-#include <silicium/observable/coroutine_generator.hpp>
-#include <silicium/observable/total_consumer.hpp>
-#include <silicium/observable/flatten.hpp>
+#include <silicium/observable/spawn_coroutine.hpp>
 #include <silicium/asio/writing_observable.hpp>
 #include <silicium/asio/reading_observable.hpp>
 #include <silicium/source/received_from_socket_source.hpp>
@@ -163,9 +161,9 @@ namespace fileserver
 		}
 	}
 
-	template <class MakeSender>
+	template <class YieldContext, class MakeSender>
 	void respond(
-		Si::push_context<Si::nothing> &yield,
+		YieldContext &yield,
 		MakeSender const &make_sender,
 		Si::http::request const &header,
 		file_repository const &repository,
@@ -198,6 +196,7 @@ namespace fileserver
 				[&root](Si::noexcept_string const &name)
 				{
 					//TODO: resolve the name
+					boost::ignore_unused(name);
 					return to_unknown_digest(root);
 				}
 			)
@@ -232,36 +231,49 @@ namespace fileserver
 		{
 		case request_type::get:
 			{
-				auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
-				{
-					yield(Si::visit<std::vector<char>>(
-						found_file,
-						[](file_system_location const &location)
+				Si::visit<Si::nothing>(
+					*request,
+					[&try_send, &found_file, &yield](get_request const &) -> Si::nothing
+					{
+						auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
 						{
-							return Si::read_file(location.where.to_boost_path());
-						},
-						[](in_memory_location const &location)
+							yield(Si::visit<std::vector<char>>(
+								found_file,
+								[](file_system_location const &location)
+								{
+									return Si::read_file(location.where.to_boost_path());
+								},
+								[](in_memory_location const &location)
+								{
+									return location.content;
+								}
+							));
+							return {};
+						});
+						auto const &body = yield.get_one(Si::ref(reading));
+						if (!body)
 						{
-							return location.content;
+							return Si::nothing();
 						}
-					));
-					return {};
-				});
-				auto const &body = yield.get_one(reading);
-				if (!body)
-				{
-					return;
-				}
 
-				if (body->size() != location_file_size(found_file))
-				{
-					return;
-				}
+						if (body->size() != location_file_size(found_file))
+						{
+							return Si::nothing();
+						}
 
-				if (!try_send(*body))
-				{
-					return;
-				}
+						if (!try_send(*body))
+						{
+							return Si::nothing();
+						}
+
+						return Si::nothing();
+					},
+					[](browse_request const &)
+					{
+						//TODO
+						return Si::nothing();
+					}
+				);
 				break;
 			}
 
@@ -272,9 +284,9 @@ namespace fileserver
 		}
 	}
 
-	template <class ReceiveObservable, class MakeSender, class Shutdown>
+	template <class YieldContext, class ReceiveObservable, class MakeSender, class Shutdown>
 	void serve_client(
-		Si::push_context<Si::nothing> &yield,
+		YieldContext &yield,
 		ReceiveObservable &receive,
 		MakeSender const &make_sender,
 		Shutdown const &shutdown,
@@ -321,17 +333,17 @@ namespace fileserver
 		file_repository const &files = scanned.first;
 		digest const &root_digest = root.referenced;
 
-		auto accept_all = Si::make_coroutine_generator<session_handle>([&clients, &files, &root_digest](Si::push_context<session_handle> &yield)
+		Si::spawn_coroutine([&clients, &files, &root_digest](Si::spawn_context &yield)
 		{
 			for (;;)
 			{
-				auto accepted = yield.get_one(clients);
+				auto accepted = yield.get_one(Si::ref(clients));
 				if (!accepted)
 				{
 					return;
 				}
 				std::shared_ptr<boost::asio::ip::tcp::socket> socket = accepted->get(); //TODO handle error
-				auto prepare_socket = [socket, &files, &root_digest](Si::push_context<Si::nothing> &yield)
+				auto prepare_socket = [socket, &files, &root_digest](Si::spawn_context &yield)
 				{
 					std::array<char, 1024> receive_buffer;
 					auto received = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
@@ -348,12 +360,9 @@ namespace fileserver
 					};
 					serve_client(yield, received, make_sender, shutdown, files, root_digest);
 				};
-				yield(Si::erase_shared(Si::make_coroutine_generator<Si::nothing>(prepare_socket)));
+				Si::spawn_coroutine(prepare_socket);
 			}
 		});
-		auto all_sessions_finished = Si::flatten<boost::mutex>(std::move(accept_all));
-		auto done = Si::make_total_consumer(std::move(all_sessions_finished));
-		done.start();
 
 		io.run();
 	}
