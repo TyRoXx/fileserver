@@ -47,42 +47,82 @@ namespace fileserver
 {
 	using response_part = Si::memory_range;
 
-	struct content_request
-	{
-		unknown_digest requested_file;
-	};
+	typedef Si::fast_variant<unknown_digest, Si::noexcept_string> any_reference;
 
-	struct root_request
+	struct get_request
 	{
+		any_reference what;
 	};
 
 	struct browse_request
 	{
+		any_reference what;
 	};
 
-	typedef Si::fast_variant<root_request, content_request, browse_request> parsed_request;
+	typedef Si::fast_variant<browse_request, get_request> parsed_request;
+
+	template <class PathElementRange>
+	Si::optional<any_reference> parse_any_reference(PathElementRange const &path)
+	{
+		if (path.empty())
+		{
+			return any_reference{Si::noexcept_string{}};
+		}
+		if (boost::range::equal(path.front(), Si::make_c_str_range("name")))
+		{
+			auto name_begin = path.begin() + 1;
+			if (name_begin == path.end())
+			{
+				return any_reference{Si::noexcept_string{}};
+			}
+			return any_reference{Si::noexcept_string(name_begin->begin(), name_begin->end())};
+		}
+		if (boost::range::equal(path.front(), Si::make_c_str_range("hash")))
+		{
+			auto hash_begin = path.begin() + 1;
+			if (hash_begin == path.end())
+			{
+				return Si::none;
+			}
+			auto digest = parse_digest(*hash_begin);
+			if (!digest)
+			{
+				return Si::none;
+			}
+			return any_reference{std::move(*digest)};
+		}
+		return Si::none;
+	}
 
 	Si::optional<parsed_request> parse_request_path(Si::memory_range const &path)
 	{
 		boost::optional<Si::http::uri> const parsed_path = Si::http::parse_uri(path);
 		if (!parsed_path || parsed_path->path.empty())
 		{
-			return parsed_request(root_request());
-		}
-
-		if (parsed_path->path.front() == Si::make_c_str_range("browse"))
-		{
-			return parsed_request(browse_request());
-		}
-
-		content_request request;
-		auto digest = parse_digest(parsed_path->path.front());
-		if (!digest)
-		{
 			return Si::none;
 		}
-		request.requested_file = std::move(*digest);
-		return parsed_request(std::move(request));
+
+		if (boost::range::equal(parsed_path->path.front(), Si::make_c_str_range("browse")))
+		{
+			Si::optional<any_reference> ref = parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
+			if (!ref)
+			{
+				return Si::none;
+			}
+			return parsed_request{browse_request{std::move(*ref)}};
+		}
+
+		if (boost::range::equal(parsed_path->path.front(), Si::make_c_str_range("get")))
+		{
+			Si::optional<any_reference> ref = parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
+			if (!ref)
+			{
+				return Si::none;
+			}
+			return parsed_request{get_request{std::move(*ref)}};
+		}
+
+		return Si::none;
 	}
 
 	Si::http::response make_not_found_response()
@@ -149,13 +189,17 @@ namespace fileserver
 
 		std::vector<location> const * const found_file_locations = repository.find_location(
 			Si::visit<unknown_digest>(
-				*request,
-				[&root](root_request) -> unknown_digest { return to_unknown_digest(root); },
-				[](content_request const &content) -> unknown_digest
+				Si::visit<any_reference const &>(
+					*request,
+					[](get_request const &request) -> any_reference const & { return request.what; },
+					[](browse_request const &request) -> any_reference const & { return request.what; }
+				),
+				[](unknown_digest const &digest) { return digest; },
+				[&root](Si::noexcept_string const &name)
 				{
-					return content.requested_file;
-				},
-				[](browse_request) -> unknown_digest { throw std::logic_error("not implemented"); }
+					//TODO: resolve the name
+					return to_unknown_digest(root);
+				}
 			)
 		);
 		if (!found_file_locations)
