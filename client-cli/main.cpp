@@ -1,6 +1,6 @@
 #include "client/mount.hpp"
 #include "client/clone.hpp"
-#include "client/http_file_service.hpp"
+#include "file_service/http_file_service.hpp"
 #include <server/path.hpp>
 #include <silicium/asio/connecting_observable.hpp>
 #include <silicium/observable/total_consumer.hpp>

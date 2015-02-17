@@ -1,5 +1,5 @@
 #include "clone.hpp"
-#include "http_file_service.hpp"
+#include "file_service/http_file_service.hpp"
 #include <server/directory_listing.hpp>
 #include <silicium/source/virtualized_source.hpp>
 #include <silicium/source/observable_source.hpp>

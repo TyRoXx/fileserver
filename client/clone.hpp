@@ -1,7 +1,7 @@
 #ifndef FILESERVER_CLIENT_CLONE_HPP
 #define FILESERVER_CLIENT_CLONE_HPP
 
-#include "file_service.hpp"
+#include "file_service/file_service.hpp"
 #include <server/digest.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/file_handle.hpp>

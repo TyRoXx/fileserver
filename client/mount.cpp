@@ -1,5 +1,5 @@
 #include "mount.hpp"
-#include "http_file_service.hpp"
+#include "file_service/http_file_service.hpp"
 #include <silicium/observable/ptr.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/asio/connecting_observable.hpp>
