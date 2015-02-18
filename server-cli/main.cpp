@@ -231,9 +231,9 @@ namespace fileserver
 		{
 		case request_type::get:
 			{
-				Si::visit<Si::nothing>(
+				Si::visit<void>(
 					*request,
-					[&try_send, &found_file, &yield](get_request const &) -> Si::nothing
+					[&try_send, &found_file, &yield](get_request const &)
 					{
 						auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
 						{
@@ -253,25 +253,19 @@ namespace fileserver
 						auto const &body = yield.get_one(Si::ref(reading));
 						if (!body)
 						{
-							return Si::nothing();
+							return;
 						}
 
 						if (body->size() != location_file_size(found_file))
 						{
-							return Si::nothing();
+							return;
 						}
 
-						if (!try_send(*body))
-						{
-							return Si::nothing();
-						}
-
-						return Si::nothing();
+						try_send(*body);
 					},
 					[](browse_request const &)
 					{
 						//TODO
-						return Si::nothing();
 					}
 				);
 				break;
