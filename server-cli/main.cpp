@@ -196,7 +196,7 @@ namespace fileserver
 				[&root](Si::noexcept_string const &name)
 				{
 					//TODO: resolve the name
-					boost::ignore_unused(name);
+					boost::ignore_unused_variable_warning(name);
 					return to_unknown_digest(root);
 				}
 			)
