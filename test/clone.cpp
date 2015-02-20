@@ -1,6 +1,8 @@
 #include <client/clone.hpp>
 #include <silicium/observable/for_each.hpp>
 #include <silicium/observable/coroutine_generator.hpp>
+#include <silicium/observable/function.hpp>
+#include <silicium/observable/take.hpp>
 #include <silicium/observable/ready_future.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/unordered_map.hpp>
@@ -101,10 +103,10 @@ namespace
 			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(
 				fileserver::linear_file{
 					static_cast<fileserver::file_offset>(file->size()),
-					Si::erase_unique(Si::make_coroutine_generator<Si::error_or<Si::memory_range>>([file](Si::push_context<Si::error_or<Si::memory_range>> push)
-						{
-							push(Si::make_memory_range(file->data(), file->data() + file->size()));
-						}))
+					Si::erase_unique(Si::take(Si::make_function_observable2([file]() -> Si::error_or<Si::memory_range>
+					{
+						return Si::make_memory_range(file->data(), file->data() + file->size());
+					}), 1))
 				}
 			)));
 		}
