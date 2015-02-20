@@ -1,5 +1,5 @@
 #include "mount.hpp"
-#include "file_service/http_file_service.hpp"
+#include "storage_reader/http_storage_reader.hpp"
 #include <silicium/observable/ptr.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/asio/connecting_observable.hpp>
@@ -30,7 +30,7 @@ namespace fileserver
 		struct file_system
 		{
 			boost::asio::io_service io;
-			std::unique_ptr<file_service> backend;
+			std::unique_ptr<storage_reader> backend;
 			std::future<void> worker;
 			boost::optional<boost::asio::io_service::work> keep_running;
 			unknown_digest root;
@@ -49,7 +49,7 @@ namespace fileserver
 			boost::ignore_unused_variable_warning(conn);
 			assert(!g_config.root.empty());
 			auto fs = Si::make_unique<file_system>();
-			fs->backend = Si::make_unique<http_file_service>(fs->io, g_config.server);
+			fs->backend = Si::make_unique<http_storage_reader>(fs->io, g_config.server);
 			fs->keep_running = boost::in_place(boost::ref(fs->io));
 			auto &io = fs->io;
 			fs->worker = std::async(std::launch::async, [&io]()
@@ -76,7 +76,7 @@ namespace fileserver
 			std::unique_ptr<file_system>(static_cast<file_system *>(private_data));
 		}
 
-		Si::error_or<linear_file> read_file(file_service &service, unknown_digest const &name)
+		Si::error_or<linear_file> read_file(storage_reader &service, unknown_digest const &name)
 		{
 			Si::error_or<linear_file> file;
 			Si::detail::event<Si::std_threading> waiting;
@@ -112,7 +112,7 @@ namespace fileserver
 			return deserialize_json(std::move(content_source));
 		}
 
-		boost::optional<typed_reference> resolve_path(std::vector<std::string> const &path_components, digest const &root, file_service &service)
+		boost::optional<typed_reference> resolve_path(std::vector<std::string> const &path_components, digest const &root, storage_reader &service)
 		{
 			content_type last_type = json_listing_content_type;
 			digest last_digest = root;
@@ -156,7 +156,7 @@ namespace fileserver
 			return path_components;
 		}
 
-		bool fill_stat(typed_reference const &file, struct stat &destination, file_service &service)
+		bool fill_stat(typed_reference const &file, struct stat &destination, storage_reader &service)
 		{
 			if (file.type == blob_content_type)
 			{

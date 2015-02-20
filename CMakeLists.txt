@@ -71,7 +71,7 @@ if(UNIX)
 endif()
 
 include_directories(".")
-add_subdirectory("file_service")
+add_subdirectory("storage_reader")
 add_subdirectory("server")
 add_subdirectory("server-cli")
 add_subdirectory("client")

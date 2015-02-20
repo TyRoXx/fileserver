@@ -1,7 +1,7 @@
 #ifndef FILESERVER_CLIENT_CLONE_HPP
 #define FILESERVER_CLIENT_CLONE_HPP
 
-#include "file_service/file_service.hpp"
+#include "storage_reader/storage_reader.hpp"
 #include <server/digest.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/file_handle.hpp>
@@ -243,7 +243,7 @@ namespace fileserver
 	};
 
 	Si::unique_observable<boost::system::error_code>
-	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, file_service &server, boost::asio::io_service &io);
+	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, storage_reader &server, boost::asio::io_service &io);
 }
 
 #endif

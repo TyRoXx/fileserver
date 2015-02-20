@@ -1,6 +1,6 @@
 #include "client/mount.hpp"
 #include "client/clone.hpp"
-#include "file_service/http_file_service.hpp"
+#include "storage_reader/http_storage_reader.hpp"
 #include <server/path.hpp>
 #include <silicium/asio/connecting_observable.hpp>
 #include <silicium/observable/total_consumer.hpp>
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
 		int rc = 1;
 		fileserver::filesystem_directory_manipulator mount_point_manipulator(mount_point);
 		boost::asio::io_service io;
-		fileserver::http_file_service service(io, server);
+		fileserver::http_storage_reader service(io, server);
 		auto all = Si::for_each(fileserver::clone_directory(*requested, mount_point_manipulator, service, io), [&rc](boost::system::error_code ec)
 		{
 			if (ec)

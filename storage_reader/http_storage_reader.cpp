@@ -1,4 +1,4 @@
-#include "http_file_service.hpp"
+#include "http_storage_reader.hpp"
 #include <silicium/observable/coroutine_generator.hpp>
 #include <silicium/asio/connecting_observable.hpp>
 #include <silicium/asio/writing_observable.hpp>
@@ -11,23 +11,23 @@
 
 namespace fileserver
 {
-	http_file_service::http_file_service(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server)
+	http_storage_reader::http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server)
 		: io(&io)
 		, server(server)
 	{
 	}
 
-	Si::unique_observable<Si::error_or<linear_file>> http_file_service::open(unknown_digest const &name)
+	Si::unique_observable<Si::error_or<linear_file>> http_storage_reader::open(unknown_digest const &name)
 	{
-		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<linear_file>>(std::bind(&http_file_service::open_impl, this, std::placeholders::_1, name)));
+		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<linear_file>>(std::bind(&http_storage_reader::open_impl, this, std::placeholders::_1, name)));
 	}
 
-	Si::unique_observable<Si::error_or<file_offset>> http_file_service::size(unknown_digest const &name)
+	Si::unique_observable<Si::error_or<file_offset>> http_storage_reader::size(unknown_digest const &name)
 	{
-		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<file_offset>>(std::bind(&http_file_service::size_impl, this, std::placeholders::_1, name)));
+		return Si::erase_unique(Si::make_coroutine_generator<Si::error_or<file_offset>>(std::bind(&http_storage_reader::size_impl, this, std::placeholders::_1, name)));
 	}
 
-	Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> http_file_service::connect(
+	Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> http_storage_reader::connect(
 		Si::yield_context yield)
 	{
 		auto socket = std::make_shared<boost::asio::ip::tcp::socket>(*io);
@@ -43,7 +43,7 @@ namespace fileserver
 		return socket;
 	}
 
-	std::vector<char> http_file_service::serialize_request(Si::noexcept_string method, unknown_digest const &requested)
+	std::vector<char> http_storage_reader::serialize_request(Si::noexcept_string method, unknown_digest const &requested)
 	{
 		std::vector<char> request_buffer;
 		Si::http::request request;
@@ -57,7 +57,7 @@ namespace fileserver
 		return request_buffer;
 	}
 
-	Si::error_or<Si::nothing> http_file_service::send_all(
+	Si::error_or<Si::nothing> http_storage_reader::send_all(
 		Si::yield_context yield,
 		boost::asio::ip::tcp::socket &socket,
 		std::vector<char> const &buffer)
@@ -73,7 +73,7 @@ namespace fileserver
 		return Si::nothing();
 	}
 
-	Si::error_or<std::pair<Si::http::response, std::size_t>> http_file_service::receive_response_header(
+	Si::error_or<std::pair<Si::http::response, std::size_t>> http_storage_reader::receive_response_header(
 		Si::yield_context yield,
 		boost::asio::ip::tcp::socket &socket,
 		std::array<char, 8192> &buffer)
@@ -89,7 +89,7 @@ namespace fileserver
 		return std::make_pair(std::move(*response_header), response_source.buffered().size());
 	}
 
-	void http_file_service::size_impl(
+	void http_storage_reader::size_impl(
 		Si::push_context<Si::error_or<file_offset>> yield,
 		unknown_digest const &requested_name)
 	{
@@ -129,7 +129,7 @@ namespace fileserver
 		yield(boost::lexical_cast<file_offset>(content_length_header->second));
 	}
 
-	void http_file_service::open_impl(
+	void http_storage_reader::open_impl(
 		Si::push_context<Si::error_or<linear_file>> yield,
 		unknown_digest const &requested_name)
 	{

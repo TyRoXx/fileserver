@@ -1,16 +1,16 @@
-#ifndef FILESERVER_HTTP_FILE_SERVICE_HPP
-#define FILESERVER_HTTP_FILE_SERVICE_HPP
+#ifndef FILESERVER_HTTP_STORAGE_READER_HPP
+#define FILESERVER_HTTP_STORAGE_READER_HPP
 
-#include "file_service.hpp"
+#include "storage_reader.hpp"
 #include <silicium/observable/yield_context.hpp>
 #include <silicium/http/http.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
 namespace fileserver
 {
-	struct http_file_service : file_service
+	struct http_storage_reader : storage_reader
 	{
-		explicit http_file_service(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server);
+		explicit http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server);
 		virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) SILICIUM_OVERRIDE;
 		virtual Si::unique_observable<Si::error_or<file_offset>> size(unknown_digest const &name) SILICIUM_OVERRIDE;
 

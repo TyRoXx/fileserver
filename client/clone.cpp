@@ -1,5 +1,5 @@
 #include "clone.hpp"
-#include "file_service/http_file_service.hpp"
+#include "storage_reader/http_storage_reader.hpp"
 #include <server/directory_listing.hpp>
 #include <silicium/source/virtualized_source.hpp>
 #include <silicium/source/observable_source.hpp>
@@ -46,7 +46,7 @@ namespace fileserver
 			return boost::system::error_code();
 		}
 
-		boost::system::error_code clone_regular_file(file_service &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
+		boost::system::error_code clone_regular_file(storage_reader &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
 		{
 			Si::error_or<linear_file> maybe_remote_file;
 			yield.get_one(service.open(blob_digest), maybe_remote_file);
@@ -65,7 +65,7 @@ namespace fileserver
 			return copy_bytes(content_source, remote_file.size, *local_file);
 		}
 
-		boost::system::error_code clone_recursively(file_service &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
+		boost::system::error_code clone_recursively(storage_reader &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
 		{
 			{
 				boost::system::error_code const ec = destination.require_exists();
@@ -121,7 +121,7 @@ namespace fileserver
 	}
 
 	Si::unique_observable<boost::system::error_code>
-	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, file_service &server, boost::asio::io_service &io)
+	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, storage_reader &server, boost::asio::io_service &io)
 	{
 		return Si::erase_unique(Si::make_coroutine_generator<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
 		{

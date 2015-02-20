@@ -86,7 +86,7 @@ namespace
 		boost::filesystem::path location;
 	};
 
-	struct file_service : fileserver::file_service
+	struct file_service : fileserver::storage_reader
 	{
 		boost::unordered_map<fileserver::unknown_digest, std::shared_ptr<std::vector<char> const>> files;
 
