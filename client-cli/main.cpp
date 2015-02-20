@@ -183,7 +183,7 @@ int main(int argc, char **argv)
 		int rc = 1;
 		fileserver::filesystem_directory_manipulator mount_point_manipulator(mount_point);
 		boost::asio::io_service io;
-		fileserver::http_storage_reader service(io, server);
+		fileserver::http_storage_reader service(io, server, "/");
 		auto all = Si::for_each(fileserver::clone_directory(*requested, mount_point_manipulator, service, io), [&rc](boost::system::error_code ec)
 		{
 			if (ec)

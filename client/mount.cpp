@@ -49,7 +49,7 @@ namespace fileserver
 			boost::ignore_unused_variable_warning(conn);
 			assert(!g_config.root.empty());
 			auto fs = Si::make_unique<file_system>();
-			fs->backend = Si::make_unique<http_storage_reader>(fs->io, g_config.server);
+			fs->backend = Si::make_unique<http_storage_reader>(fs->io, g_config.server, "/");
 			fs->keep_running = boost::in_place(boost::ref(fs->io));
 			auto &io = fs->io;
 			fs->worker = std::async(std::launch::async, [&io]()

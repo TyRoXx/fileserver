@@ -11,9 +11,10 @@
 
 namespace fileserver
 {
-	http_storage_reader::http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server)
+	http_storage_reader::http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server, Si::noexcept_string relative_path)
 		: io(&io)
 		, server(server)
+		, relative_path(std::move(relative_path))
 	{
 	}
 
@@ -49,7 +50,7 @@ namespace fileserver
 		Si::http::request request;
 		request.http_version = "HTTP/1.0";
 		request.method = std::move(method);
-		request.path = "/";
+		request.path = relative_path;
 		encode_ascii_hex_digits(requested.begin(), requested.end(), std::back_inserter(request.path));
 		request.arguments["Host"] = server.address().to_string().c_str();
 		auto request_sink = Si::make_container_sink(request_buffer);

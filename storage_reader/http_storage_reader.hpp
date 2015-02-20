@@ -10,7 +10,7 @@ namespace fileserver
 {
 	struct http_storage_reader : storage_reader
 	{
-		explicit http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server);
+		explicit http_storage_reader(boost::asio::io_service &io, boost::asio::ip::tcp::endpoint server, Si::noexcept_string relative_path);
 		virtual Si::unique_observable<Si::error_or<linear_file>> open(unknown_digest const &name) SILICIUM_OVERRIDE;
 		virtual Si::unique_observable<Si::error_or<file_offset>> size(unknown_digest const &name) SILICIUM_OVERRIDE;
 
@@ -18,6 +18,7 @@ namespace fileserver
 
 		boost::asio::io_service *io = nullptr;
 		boost::asio::ip::tcp::endpoint server;
+		Si::noexcept_string relative_path;
 
 		Si::error_or<std::shared_ptr<boost::asio::ip::tcp::socket>> connect(Si::yield_context yield);
 		std::vector<char> serialize_request(Si::noexcept_string method, unknown_digest const &requested);
