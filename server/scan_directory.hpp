@@ -87,7 +87,7 @@ namespace fileserver
 		}
 		auto /*non-const*/ typed_serialized_listing = serialize_listing(listing);
 		auto /*non-const*/ &serialized_listing = typed_serialized_listing.first;
-		auto const listing_digest = sha256(Si::make_single_source(boost::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
+		auto const listing_digest = sha256(Si::make_single_source(Si::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
 		repository.available[to_unknown_digest(listing_digest)].emplace_back(location{in_memory_location{std::move(serialized_listing)}});
 		return std::make_pair(std::move(repository), typed_reference(typed_serialized_listing.second, listing_digest));
 	}

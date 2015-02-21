@@ -92,7 +92,7 @@ namespace fileserver
 		{
 			virtual void push_result(Si::nothing result) SILICIUM_OVERRIDE
 			{
-				boost::ignore_unused(result);
+				boost::ignore_unused_variable_warning(result);
 				SILICIUM_UNREACHABLE();
 			}
 
