@@ -46,12 +46,14 @@ namespace
 	{
 		virtual boost::system::error_code seek(fileserver::file_offset destination) SILICIUM_OVERRIDE
 		{
+			boost::ignore_unused_variable_warning(destination);
 			BOOST_FAIL("unexpected seek");
 			return boost::system::error_code();
 		}
 
 		virtual boost::system::error_code write(Si::memory_range const &written) SILICIUM_OVERRIDE
 		{
+			boost::ignore_unused_variable_warning(written);
 			return boost::system::error_code();
 		}
 	};
@@ -75,11 +77,13 @@ namespace
 
 		virtual Si::error_or<std::unique_ptr<fileserver::writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
+			boost::ignore_unused_variable_warning(name);
 			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
 		virtual Si::error_or<fileserver::read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
+			boost::ignore_unused_variable_warning(name);
 			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
