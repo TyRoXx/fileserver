@@ -92,7 +92,7 @@ namespace
 		boost::filesystem::path location;
 	};
 
-	struct file_service : fileserver::storage_reader
+	struct memory_storage_reader : fileserver::storage_reader
 	{
 		boost::unordered_map<fileserver::unknown_digest, std::shared_ptr<std::vector<char> const>> files;
 
@@ -132,7 +132,7 @@ BOOST_AUTO_TEST_CASE(client_clone_empty)
 	fileserver::unknown_digest const root;
 	readonly_directory_manipulator dir(".");
 	boost::asio::io_service io;
-	file_service service;
+	memory_storage_reader service;
 	service.files.insert(std::make_pair(root, Si::to_shared(std::vector<char>{'{', '}'})));
 	bool has_finished = false;
 	auto all = Si::for_each(fileserver::clone_directory(root, dir, service, io), [&has_finished](boost::system::error_code ec)
