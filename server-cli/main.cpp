@@ -33,6 +33,8 @@
 #include <silicium/observable/end.hpp>
 #include <silicium/source/single_source.hpp>
 #include <silicium/sink/iterator_sink.hpp>
+#include <silicium/single_directory_watcher.hpp>
+#include <silicium/source/observable_source.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -360,6 +362,41 @@ namespace fileserver
 
 		io.run();
 	}
+	
+	char const *notification_type_name(Si::file_notification_type type)
+	{
+		switch (type)
+		{
+		case Si::file_notification_type::add: return "add";
+		case Si::file_notification_type::change_content: return "change_content";
+		case Si::file_notification_type::change_content_or_metadata: return "change_content_or_metadata";
+		case Si::file_notification_type::change_metadata: return "change_metadata";
+		case Si::file_notification_type::move_self: return "move_self";
+		case Si::file_notification_type::remove: return "remove";
+		case Si::file_notification_type::remove_self: return "remove_self";
+		}
+		SILICIUM_UNREACHABLE();
+	}
+
+	void watch_directory(boost::filesystem::path const &watched_dir)
+	{
+		boost::asio::io_service io;
+		Si::single_directory_watcher watcher(io, watched_dir, Si::single_directory_watcher_recursion::infinite);
+		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
+		{
+			auto events = Si::make_observable_source(Si::ref(watcher), yield);
+			for (;;)
+			{
+				Si::optional<Si::file_notification> event = Si::get(events);
+				if (!event)
+				{
+					break;
+				}
+				std::cerr << notification_type_name(event->type) << " " << event->name << '\n';
+			}
+		});
+		io.run();
+	}
 }
 
 int main(int argc, char **argv)
@@ -401,6 +438,11 @@ int main(int argc, char **argv)
 	if (verb == "serve")
 	{
 		fileserver::serve_directory(where);
+		return 0;
+	}
+	else if (verb == "watch")
+	{
+		fileserver::watch_directory(where);
 		return 0;
 	}
 	else
