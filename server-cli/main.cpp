@@ -381,7 +381,7 @@ namespace fileserver
 	void watch_directory(boost::filesystem::path const &watched_dir)
 	{
 		boost::asio::io_service io;
-		Si::single_directory_watcher watcher(io, watched_dir, Si::single_directory_watcher_recursion::infinite);
+		Si::single_directory_watcher watcher(io, watched_dir);
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
 		{
 			auto events = Si::make_observable_source(Si::ref(watcher), yield);
