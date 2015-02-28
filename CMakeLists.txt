@@ -60,6 +60,25 @@ if(URIPARSER_FOUND)
 	include_directories(SYSTEM ${URIPARSER_INCLUDE_DIR})
 endif()
 
+if(SQLPP11_FOUND)
+endif()
+
+find_package(SQLPP11)
+find_package(SQLPP11SQLite3)
+find_package(SQLite3)
+if(SQLPP11_FOUND AND SQLPP11SQLITE3_FOUND AND SQLITE3_FOUND)
+	include_directories(${SQLPP11_INCLUDE_DIRS})
+	include_directories(SYSTEM ${SQLPP11SQLITE3_INCLUDE_DIRS})
+	include_directories(SYSTEM ${SQLITE3_INCLUDE_DIRS})
+	set(FILESERVER_HAS_SQLITE ON)
+else()
+	set(FILESERVER_HAS_SQLITE OFF)
+endif()
+
+if(FILESERVER_HAS_SQLITE)
+	add_definitions("-DFILESERVER_HAS_SQLITE")
+endif()
+
 include_directories(SYSTEM "dependencies/rapidjson/include")
 
 if(UNIX)
