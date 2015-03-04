@@ -137,6 +137,7 @@ namespace fileserver
 			std::vector<Si::file_notification>
 		> m_receiver_or_result;
 		pool_executor<Si::std_threading> m_scanners;
+		std::map<int, Si::path> m_watch_descriptor_to_path;
 
 		void handle_file_notifications(std::vector<Si::linux::file_notification> notifications)
 		{
@@ -199,6 +200,9 @@ namespace fileserver
 
 		Si::error_or<directory> scan(Si::native_path_string directory_to_scan)
 		{
+			directory scanned;
+			scanned.watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan.c_str(), IN_ALL_EVENTS).get();
+
 			boost::system::error_code ec;
 			boost::filesystem::directory_iterator i(directory_to_scan.c_str(), ec);
 			if (!!ec)
@@ -206,7 +210,6 @@ namespace fileserver
 				return ec;
 			}
 			std::vector<Si::linux::file_notification> artifical_notifications;
-			directory scanned;
 			while (i != boost::filesystem::directory_iterator())
 			{
 				auto leaf = i->path().leaf();
@@ -216,20 +219,20 @@ namespace fileserver
 				{
 				case boost::filesystem::directory_file:
 					{
-						Si::error_or<directory> sub_directory = scan(Si::native_path_string(leaf.c_str()));
+						Si::error_or<directory> sub_directory = scan(Si::native_path_string(i->path().c_str()));
 						if (sub_directory.is_error())
 						{
 							return sub_directory.error();
 						}
 						scanned.sub_directories.insert(std::make_pair(sub_name, std::move(sub_directory).get()));
 
-						artifical_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name));
+						artifical_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name), -1);
 						break;
 					}
 
 				case boost::filesystem::regular_file:
 					{
-						artifical_notifications.emplace_back(IN_CREATE, std::move(sub_name));
+						artifical_notifications.emplace_back(IN_CREATE, std::move(sub_name), -1);
 						break;
 					}
 
