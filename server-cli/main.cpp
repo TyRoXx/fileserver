@@ -7,6 +7,7 @@
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
 #include <server/path.hpp>
+#include <server/recursive_directory_watcher.hpp>
 #include <silicium/asio/tcp_acceptor.hpp>
 #include <silicium/observable/spawn_coroutine.hpp>
 #include <silicium/asio/writing_observable.hpp>
@@ -397,6 +398,35 @@ namespace fileserver
 		});
 		io.run();
 	}
+
+	void watch_directory_recursively(boost::filesystem::path const &watched_dir)
+	{
+		boost::asio::io_service io;
+		fileserver::recursive_directory_watcher watcher(io, Si::native_path_string(watched_dir.c_str()));
+		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
+		{
+			auto event_reader = Si::make_observable_source(Si::ref(watcher), yield);
+			for (;;)
+			{
+				Si::optional<Si::error_or<std::vector<Si::file_notification>>> events = Si::get(event_reader);
+				if (!events)
+				{
+					break;
+				}
+				if (events->is_error())
+				{
+					std::cerr << events->error() << '\n';
+					break;
+				}
+				auto const &notifications = events->get();
+				for (Si::file_notification const &notification : notifications)
+				{
+					std::cerr << notification_type_name(notification.type) << " " << notification.name << '\n';
+				}
+			}
+		});
+		io.run();
+	}
 }
 
 int main(int argc, char **argv)
@@ -440,9 +470,14 @@ int main(int argc, char **argv)
 		fileserver::serve_directory(where);
 		return 0;
 	}
-	else if (verb == "watch")
+	else if (verb == "watchflat")
 	{
 		fileserver::watch_directory(where);
+		return 0;
+	}
+	else if (verb == "watch")
+	{
+		fileserver::watch_directory_recursively(where);
 		return 0;
 	}
 	else
