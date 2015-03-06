@@ -421,7 +421,12 @@ namespace fileserver
 				auto const &notifications = events->get();
 				for (Si::file_notification const &notification : notifications)
 				{
-					std::cerr << notification_type_name(notification.type) << " " << notification.name << '\n';
+					std::cerr << notification_type_name(notification.type) << " " << notification.name;
+					if (notification.is_directory)
+					{
+						std::cerr << '/';
+					}
+					std::cerr << '\n';
 				}
 			}
 		});

@@ -18,9 +18,10 @@ namespace fileserver
 		{
 			for (std::size_t i = 0; i < threads; ++i)
 			{
-				m_workers.emplace_back(ThreadingAPI::launch_async([this]
+				boost::asio::io_service &queue = m_immovable->m_work_queue;
+				m_workers.emplace_back(ThreadingAPI::launch_async([&queue]
 				{
-					m_immovable->m_work_queue.run();
+					queue.run();
 				}));
 			}
 		}
