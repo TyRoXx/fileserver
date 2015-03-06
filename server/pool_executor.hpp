@@ -2,6 +2,7 @@
 #define FILESERVER_POOL_EXECUTOR_HPP
 
 #include <boost/asio/io_service.hpp>
+#include <silicium/utility.hpp>
 
 namespace fileserver
 {
@@ -13,12 +14,13 @@ namespace fileserver
 		}
 
 		explicit pool_executor(std::size_t threads)
+			: m_immovable(Si::make_unique<immovable>())
 		{
 			for (std::size_t i = 0; i < threads; ++i)
 			{
 				m_workers.emplace_back(ThreadingAPI::launch_async([this]
 				{
-					m_work_queue.run();
+					m_immovable->m_work_queue.run();
 				}));
 			}
 		}
@@ -26,14 +28,25 @@ namespace fileserver
 		template <class Action>
 		void submit(Action &&work)
 		{
-			m_work_queue.post(std::forward<Action>(work));
+			assert(m_immovable);
+			m_immovable->m_work_queue.post(std::forward<Action>(work));
 		}
 
 	private:
 
-		boost::asio::io_service m_work_queue;
+		struct immovable
+		{
+			boost::asio::io_service m_work_queue;
+			boost::asio::io_service::work m_waiting_for_work;
+
+			immovable()
+				: m_waiting_for_work(m_work_queue)
+			{
+			}
+		};
+
+		std::unique_ptr<immovable> m_immovable;
 		std::vector<typename ThreadingAPI::template future<void>::type> m_workers;
-		std::unique_ptr<boost::asio::io_service::work> m_waiting_for_work;
 	};
 }
 
