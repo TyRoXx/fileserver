@@ -263,7 +263,7 @@ namespace fileserver
 				return ec;
 			}
 
-			std::vector<Si::linux::file_notification> artifical_notifications;
+			std::vector<Si::linux::file_notification> artificial_notifications;
 			while (i != boost::filesystem::directory_iterator())
 			{
 				auto leaf = i->path().leaf();
@@ -280,13 +280,13 @@ namespace fileserver
 								shared_this.begin_scan(&scanned, std::move(child));
 							});
 						}
-						artifical_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name), -1);
+						artificial_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name), -1);
 						break;
 					}
 
 				case boost::filesystem::regular_file:
 					{
-						artifical_notifications.emplace_back(IN_CREATE, std::move(sub_name), -1);
+						artificial_notifications.emplace_back(IN_CREATE, std::move(sub_name), -1);
 						break;
 					}
 
@@ -300,7 +300,7 @@ namespace fileserver
 					return ec;
 				}
 			}
-			return std::move(artifical_notifications);
+			return std::move(artificial_notifications);
 		}
 	};
 }
