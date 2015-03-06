@@ -233,28 +233,36 @@ namespace fileserver
 				scanned = &m_root;
 			}
 			scanned->absolute_path = directory_to_scan;
+			scanned->watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan.c_str(), IN_ALL_EVENTS).get();
+			m_watch_descriptor_to_directory.insert(std::make_pair(scanned->watch.get_watch_descriptor(), scanned));
 
-			m_scanners.submit([this, scanned, directory_to_scan = std::move(directory_to_scan)]() mutable
+			recursive_directory_watcher &shared_this = *this;
+			m_scanners.submit([&shared_this, scanned, directory_to_scan = std::move(directory_to_scan)]() mutable
 			{
-				auto result = scan(*scanned, std::move(directory_to_scan));
-				m_root_strand->dispatch([this, result = std::move(result)]() mutable
+				auto result = scan(
+					*scanned,
+					std::move(directory_to_scan),
+					shared_this
+				);
+				shared_this.m_root_strand->dispatch([&shared_this, scanned, result = std::move(result)]() mutable
 				{
-					notify_observer(std::move(result));
+					shared_this.notify_observer(std::move(result));
 				});
 			});
 		}
 
-		Si::error_or<std::vector<Si::linux::file_notification>> scan(directory &scanned, Si::path directory_to_scan)
+		static Si::error_or<std::vector<Si::linux::file_notification>> scan(
+			directory &scanned,
+			Si::path directory_to_scan,
+			recursive_directory_watcher &shared_this)
 		{
-			scanned.watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan.c_str(), IN_ALL_EVENTS).get();
-			m_watch_descriptor_to_directory.insert(std::make_pair(scanned.watch.get_watch_descriptor(), &scanned));
-
 			boost::system::error_code ec;
 			boost::filesystem::directory_iterator i(directory_to_scan.c_str(), ec);
 			if (!!ec)
 			{
 				return ec;
 			}
+
 			std::vector<Si::linux::file_notification> artifical_notifications;
 			while (i != boost::filesystem::directory_iterator())
 			{
@@ -267,9 +275,9 @@ namespace fileserver
 					{
 						{
 							Si::path child(i->path().c_str());
-							m_root_strand->dispatch([this, &scanned, child = std::move(child)]() mutable
+							shared_this.m_root_strand->dispatch([&shared_this, &scanned, child = std::move(child)]() mutable
 							{
-								begin_scan(&scanned, std::move(child));
+								shared_this.begin_scan(&scanned, std::move(child));
 							});
 						}
 						artifical_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name), -1);
