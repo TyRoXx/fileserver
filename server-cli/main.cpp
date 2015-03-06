@@ -405,6 +405,7 @@ namespace fileserver
 		fileserver::recursive_directory_watcher watcher(io, Si::native_path_string(watched_dir.c_str()));
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
 		{
+			boost::uintmax_t event_count = 0;
 			auto event_reader = Si::make_observable_source(Si::ref(watcher), yield);
 			for (;;)
 			{
@@ -421,7 +422,8 @@ namespace fileserver
 				auto const &notifications = events->get();
 				for (Si::file_notification const &notification : notifications)
 				{
-					std::cerr << notification_type_name(notification.type) << " " << notification.name;
+					++event_count;
+					std::cerr << event_count << " " << notification_type_name(notification.type) << " " << notification.name;
 					if (notification.is_directory)
 					{
 						std::cerr << '/';
