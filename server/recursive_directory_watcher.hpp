@@ -113,6 +113,7 @@ namespace fileserver
 
 		struct directory
 		{
+			Si::path absolute_path;
 			Si::linux::watch_descriptor watch;
 			std::map<Si::path, directory> sub_directories;
 		};
@@ -130,12 +131,25 @@ namespace fileserver
 		std::unique_ptr<boost::asio::io_service::strand> m_root_strand;
 		notification_consumer m_inotify;
 		directory m_root;
+		std::map<int, directory *> m_watch_descriptor_to_directory;
 		Si::fast_variant<
 			Si::nothing,
 			Si::erased_observer<element_type>,
 			Si::error_or<std::vector<Si::file_notification>>
 		> m_receiver_or_result;
 		pool_executor<Si::std_threading> m_scanners;
+
+		directory *find_directory_by_watch_descriptor(int wd) const BOOST_NOEXCEPT
+		{
+			assert(wd >= 0);
+			auto i = m_watch_descriptor_to_directory.find(wd);
+			if (i == m_watch_descriptor_to_directory.end())
+			{
+				return nullptr;
+			}
+			assert(i->second);
+			return i->second;
+		}
 
 		void handle_file_notifications(std::vector<Si::linux::file_notification> notifications)
 		{
@@ -153,10 +167,16 @@ namespace fileserver
 				{
 				case Si::file_notification_type::add:
 					{
-						if ((notification.mask & IN_ISDIR) == IN_ISDIR)
+						if ((notification.mask & IN_ISDIR) != IN_ISDIR)
 						{
-							//TODO: scan directory
+							break;
 						}
+						directory * const parent_of_the_new_dir = find_directory_by_watch_descriptor(notification.watch_descriptor);
+						if (!parent_of_the_new_dir)
+						{
+							break;
+						}
+						begin_scan(parent_of_the_new_dir, parent_of_the_new_dir->absolute_path / notification.name);
 						break;
 					}
 
@@ -212,6 +232,7 @@ namespace fileserver
 			{
 				scanned = &m_root;
 			}
+			scanned->absolute_path = directory_to_scan;
 
 			m_scanners.submit([this, scanned, directory_to_scan = std::move(directory_to_scan)]() mutable
 			{
@@ -226,6 +247,7 @@ namespace fileserver
 		Si::error_or<std::vector<Si::linux::file_notification>> scan(directory &scanned, Si::path directory_to_scan)
 		{
 			scanned.watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan.c_str(), IN_ALL_EVENTS).get();
+			m_watch_descriptor_to_directory.insert(std::make_pair(scanned.watch.get_watch_descriptor(), &scanned));
 
 			boost::system::error_code ec;
 			boost::filesystem::directory_iterator i(directory_to_scan.c_str(), ec);
