@@ -72,7 +72,7 @@ namespace fileserver
 					)
 				)
 			);
-			m_scanners = pool_executor<Si::std_threading>(1);
+			m_scanners = pool_executor<Si::std_threading>(std::thread::hardware_concurrency());
 			m_root_strand->dispatch([this, root_path = Si::path(root.c_str())]() mutable
 			{
 				begin_scan(nullptr, std::move(root_path));
