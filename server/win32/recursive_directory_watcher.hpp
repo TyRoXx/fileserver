@@ -5,8 +5,10 @@
 #include <silicium/file_notification.hpp>
 #include <silicium/absolute_path.hpp>
 #include <silicium/win32/overlapped_directory_changes.hpp>
+#include <silicium/win32/single_directory_watcher.hpp>
 #include <silicium/observable/transform.hpp>
 #include <silicium/observable/total_consumer.hpp>
+#include <silicium/path_segment.hpp>
 #include <boost/asio/io_service.hpp>
 
 namespace fileserver
@@ -26,11 +28,12 @@ namespace fileserver
 
 		boost::system::error_code start(boost::asio::io_service &io, Si::absolute_path root)
 		{
-			auto handle_notifications = [this](std::vector<Si::win32::file_notification> notifications) -> Si::nothing
+			auto do_handle_notifications = [this](std::vector<Si::win32::file_notification> notifications) -> Si::nothing
 			{
+				this->handle_notifications(std::move(notifications));
 				return{};
 			};
-			m_changes = consumer(handler(handle_notifications, Si::win32::overlapped_directory_changes(io, root, true)));
+			m_changes = consumer(handler(do_handle_notifications, Si::win32::overlapped_directory_changes(io, root, true)));
 			return{};
 		}
 
@@ -41,6 +44,18 @@ namespace fileserver
 
 	private:
 		
+		enum class directory_state
+		{
+			scanning,
+			scanned
+		};
+
+		struct directory
+		{
+			directory_state state = directory_state::scanning;
+			std::map<Si::path_segment, directory> sub_directories;
+		};
+
 		typedef Si::transformation<
 			std::function<Si::nothing(std::vector<Si::win32::file_notification>)>,
 			Si::win32::overlapped_directory_changes
@@ -49,6 +64,43 @@ namespace fileserver
 		typedef Si::total_consumer<handler> consumer;
 
 		consumer m_changes;
+		directory m_root;
+
+		void handle_notifications(std::vector<Si::win32::file_notification> notifications)
+		{
+			std::vector<Si::file_notification> portable_notifications;
+			for (Si::win32::file_notification &notification : notifications)
+			{
+				Si::optional<Si::file_notification> portable_notification = Si::win32::to_portable_file_notification(std::move(notification));
+				if (!portable_notification)
+				{
+					continue;
+				}
+
+				switch (portable_notification->type)
+				{
+				case Si::file_notification_type::add:
+					{
+						if (!portable_notification->is_directory)
+						{
+							break;
+						}
+
+						break;
+					}
+
+				case Si::file_notification_type::remove:
+				case Si::file_notification_type::move_self:
+				case Si::file_notification_type::change_content:
+				case Si::file_notification_type::change_content_or_metadata:
+				case Si::file_notification_type::change_metadata:
+				case Si::file_notification_type::remove_self:
+					break;
+				}
+
+				portable_notifications.emplace_back(std::move(*portable_notification));
+			}
+		}
 	};
 }
 
