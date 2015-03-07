@@ -47,16 +47,16 @@ namespace fileserver
 	{
 		typedef Si::error_or<std::vector<Si::file_notification>> element_type;
 
-		explicit recursive_directory_watcher(boost::asio::io_service &io, Si::native_path_string root)
+		explicit recursive_directory_watcher(boost::asio::io_service &io, Si::absolute_path root)
 		{
-			auto ec = start(io, root);
+			auto ec = start(io, std::move(root));
 			if (!!ec)
 			{
 				boost::throw_exception(boost::system::system_error(ec));
 			}
 		}
 
-		boost::system::error_code start(boost::asio::io_service &io, Si::native_path_string root)
+		boost::system::error_code start(boost::asio::io_service &io, Si::absolute_path root)
 		{
 			m_root_strand = Si::make_unique<boost::asio::io_service::strand>(io);
 			m_inotify = notification_consumer(
@@ -73,9 +73,9 @@ namespace fileserver
 				)
 			);
 			m_scanners = pool_executor<Si::std_threading>(std::thread::hardware_concurrency());
-			m_root_strand->dispatch([this, root_path = Si::absolute_path(root.c_str())]() mutable
+			m_root_strand->dispatch([this, root = std::move(root)]() mutable
 			{
-				begin_scan(nullptr, std::move(root_path));
+				begin_scan(nullptr, std::move(root));
 			});
 			m_inotify.start();
 			return {};
@@ -274,8 +274,9 @@ namespace fileserver
 				case boost::filesystem::directory_file:
 					{
 						{
-							Si::absolute_path child(i->path().c_str());
-							shared_this.m_root_strand->dispatch([&shared_this, &scanned, child = std::move(child)]() mutable
+							Si::optional<Si::absolute_path> child = Si::absolute_path::create(i->path());
+							assert(child);
+							shared_this.m_root_strand->dispatch([&shared_this, &scanned, child = std::move(*child)]() mutable
 							{
 								shared_this.begin_scan(&scanned, std::move(child));
 							});

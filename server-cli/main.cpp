@@ -399,10 +399,10 @@ namespace fileserver
 		io.run();
 	}
 
-	void watch_directory_recursively(boost::filesystem::path const &watched_dir)
+	void watch_directory_recursively(Si::absolute_path const &watched_dir)
 	{
 		boost::asio::io_service io;
-		fileserver::recursive_directory_watcher watcher(io, Si::native_path_string(watched_dir.c_str()));
+		fileserver::recursive_directory_watcher watcher(io, watched_dir);
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
 		{
 			boost::uintmax_t event_count = 0;
@@ -472,6 +472,13 @@ int main(int argc, char **argv)
 	    return 1;
 	}
 
+	auto watched = Si::absolute_path::create(where);
+	if (!watched)
+	{
+		watched = Si::get_current_working_directory() / Si::relative_path(where);
+		assert(watched);
+	}
+
 	if (verb == "serve")
 	{
 		fileserver::serve_directory(where);
@@ -479,12 +486,12 @@ int main(int argc, char **argv)
 	}
 	else if (verb == "watchflat")
 	{
-		fileserver::watch_directory(Si::absolute_path(where));
+		fileserver::watch_directory(*watched);
 		return 0;
 	}
 	else if (verb == "watch")
 	{
-		fileserver::watch_directory_recursively(where);
+		fileserver::watch_directory_recursively(*watched);
 		return 0;
 	}
 	else
