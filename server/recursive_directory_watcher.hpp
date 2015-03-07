@@ -20,11 +20,11 @@ namespace fileserver
 	namespace detail
 	{
 		template <class OutputIterator>
-		void convert_to_portable_notifications_generic(std::vector<Si::linux::file_notification> &&linux_notifications, OutputIterator portable_out)
+		void convert_to_portable_notifications_generic(std::vector<Si::linux::file_notification> &&linux_notifications, Si::relative_path const &root, OutputIterator portable_out)
 		{
 			for (Si::linux::file_notification &linux_notification : linux_notifications)
 			{
-				auto portable = Si::linux::to_portable_file_notification(std::move(linux_notification));
+				auto portable = Si::linux::to_portable_file_notification(std::move(linux_notification), root);
 				if (!portable)
 				{
 					continue;
@@ -34,11 +34,11 @@ namespace fileserver
 			}
 		}
 
-		std::vector<Si::file_notification> convert_to_portable_notifications(std::vector<Si::linux::file_notification> &&linux_notifications)
+		std::vector<Si::file_notification> convert_to_portable_notifications(std::vector<Si::linux::file_notification> &&linux_notifications, Si::relative_path const &root)
 		{
 			std::vector<Si::file_notification> portable_notifications;
 			portable_notifications.reserve(linux_notifications.size());
-			convert_to_portable_notifications_generic(std::move(linux_notifications), std::back_inserter(portable_notifications));
+			convert_to_portable_notifications_generic(std::move(linux_notifications), root, std::back_inserter(portable_notifications));
 			return portable_notifications;
 		}
 	}
@@ -58,6 +58,7 @@ namespace fileserver
 
 		boost::system::error_code start(boost::asio::io_service &io, Si::absolute_path root)
 		{
+			m_root_path = std::move(root);
 			m_root_strand = Si::make_unique<boost::asio::io_service::strand>(io);
 			m_inotify = notification_consumer(
 				notification_handler(
@@ -73,9 +74,9 @@ namespace fileserver
 				)
 			);
 			m_scanners = pool_executor<Si::std_threading>(std::thread::hardware_concurrency());
-			m_root_strand->dispatch([this, root = std::move(root)]() mutable
+			m_root_strand->dispatch([this]() mutable
 			{
-				begin_scan(nullptr, std::move(root));
+				begin_scan(nullptr, m_root_path);
 			});
 			m_inotify.start();
 			return {};
@@ -113,7 +114,7 @@ namespace fileserver
 
 		struct directory
 		{
-			Si::absolute_path absolute_path;
+			Si::relative_path relative_path;
 			Si::linux::watch_descriptor watch;
 			std::map<Si::relative_path, directory> sub_directories;
 		};
@@ -131,6 +132,7 @@ namespace fileserver
 		std::unique_ptr<boost::asio::io_service::strand> m_root_strand;
 		notification_consumer m_inotify;
 		directory m_root;
+		Si::absolute_path m_root_path;
 		std::map<int, directory *> m_watch_descriptor_to_directory;
 		Si::fast_variant<
 			Si::nothing,
@@ -156,27 +158,32 @@ namespace fileserver
 			// precondition: Method is running on the root strand
 			assert(m_root_strand->running_in_this_thread());
 
-			for (Si::linux::file_notification const &notification : notifications)
+			std::vector<Si::file_notification> portable_notifications;
+
+			for (Si::linux::file_notification &notification : notifications)
 			{
-				auto type = Si::linux::to_portable_file_notification_type(notification.mask);
-				if (!type)
+				directory * const notification_dir = find_directory_by_watch_descriptor(notification.watch_descriptor);
+				if (!notification_dir)
 				{
 					continue;
 				}
-				switch (*type)
+
+				Si::optional<Si::file_notification> portable_notification = Si::linux::to_portable_file_notification(std::move(notification), notification_dir->relative_path);
+				if (!portable_notification)
+				{
+					continue;
+				}
+
+				switch (portable_notification->type)
 				{
 				case Si::file_notification_type::add:
 					{
-						if ((notification.mask & IN_ISDIR) != IN_ISDIR)
+						if (!portable_notification->is_directory)
 						{
 							break;
 						}
-						directory * const parent_of_the_new_dir = find_directory_by_watch_descriptor(notification.watch_descriptor);
-						if (!parent_of_the_new_dir)
-						{
-							break;
-						}
-						begin_scan(parent_of_the_new_dir, parent_of_the_new_dir->absolute_path / notification.name);
+						assert(notification_dir);
+						begin_scan(notification_dir, m_root_path / notification_dir->relative_path / notification.name);
 						break;
 					}
 
@@ -188,11 +195,14 @@ namespace fileserver
 				case Si::file_notification_type::change_content_or_metadata:
 					break;
 				}
+
+				portable_notifications.emplace_back(std::move(*portable_notification));
 			}
-			notify_observer(std::move(notifications));
+
+			notify_observer(std::move(portable_notifications));
 		}
 
-		void notify_observer(Si::error_or<std::vector<Si::linux::file_notification>> &&notifications)
+		void notify_observer(Si::error_or<std::vector<Si::file_notification>> &&notifications)
 		{
 			// precondition: Method is running on the root strand
 			assert(m_root_strand->running_in_this_thread());
@@ -201,13 +211,13 @@ namespace fileserver
 				m_receiver_or_result,
 				[this, &notifications](Si::nothing)
 				{
-					m_receiver_or_result = Si::map(std::move(notifications), &detail::convert_to_portable_notifications);
+					m_receiver_or_result = std::move(notifications);
 				},
 				[this, &notifications](Si::erased_observer<element_type> &receiver)
 				{
 					auto receiver_on_stack = std::move(receiver);
 					m_receiver_or_result = Si::nothing();
-					receiver_on_stack.got_element(Si::map(std::move(notifications), &detail::convert_to_portable_notifications));
+					receiver_on_stack.got_element(std::move(notifications));
 				},
 				[this, &notifications](Si::error_or<std::vector<Si::file_notification>> &existing_result)
 				{
@@ -227,12 +237,13 @@ namespace fileserver
 				Si::relative_path name = leaf(directory_to_scan);
 				directory &child = parent->sub_directories[name];
 				scanned = &child;
+				scanned->relative_path = parent->relative_path / name;
 			}
 			else
 			{
 				scanned = &m_root;
+				assert(scanned->relative_path.empty());
 			}
-			scanned->absolute_path = directory_to_scan;
 			scanned->watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan, IN_ALL_EVENTS).get();
 			m_watch_descriptor_to_directory.insert(std::make_pair(scanned->watch.get_watch_descriptor(), scanned));
 
@@ -251,7 +262,7 @@ namespace fileserver
 			});
 		}
 
-		static Si::error_or<std::vector<Si::linux::file_notification>> scan(
+		static Si::error_or<std::vector<Si::file_notification>> scan(
 			directory &scanned,
 			Si::absolute_path directory_to_scan,
 			recursive_directory_watcher &shared_this)
@@ -263,7 +274,7 @@ namespace fileserver
 				return ec;
 			}
 
-			std::vector<Si::linux::file_notification> artificial_notifications;
+			std::vector<Si::file_notification> artificial_notifications;
 			while (i != boost::filesystem::directory_iterator())
 			{
 				auto leaf = i->path().leaf();
@@ -281,13 +292,13 @@ namespace fileserver
 								shared_this.begin_scan(&scanned, std::move(child));
 							});
 						}
-						artificial_notifications.emplace_back(IN_ISDIR | IN_CREATE, std::move(sub_name), -1);
+						artificial_notifications.emplace_back(Si::file_notification_type::add, scanned.relative_path / sub_name, true);
 						break;
 					}
 
 				case boost::filesystem::regular_file:
 					{
-						artificial_notifications.emplace_back(IN_CREATE, std::move(sub_name), -1);
+						artificial_notifications.emplace_back(Si::file_notification_type::add, scanned.relative_path / sub_name, false);
 						break;
 					}
 
