@@ -379,7 +379,7 @@ namespace fileserver
 		SILICIUM_UNREACHABLE();
 	}
 
-	void watch_directory(boost::filesystem::path const &watched_dir)
+	void watch_directory(Si::absolute_path const &watched_dir)
 	{
 		boost::asio::io_service io;
 		Si::single_directory_watcher watcher(io, watched_dir);
@@ -479,7 +479,7 @@ int main(int argc, char **argv)
 	}
 	else if (verb == "watchflat")
 	{
-		fileserver::watch_directory(where);
+		fileserver::watch_directory(Si::absolute_path(where));
 		return 0;
 	}
 	else if (verb == "watch")

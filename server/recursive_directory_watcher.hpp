@@ -73,7 +73,7 @@ namespace fileserver
 				)
 			);
 			m_scanners = pool_executor<Si::std_threading>(std::thread::hardware_concurrency());
-			m_root_strand->dispatch([this, root_path = Si::path(root.c_str())]() mutable
+			m_root_strand->dispatch([this, root_path = Si::absolute_path(root.c_str())]() mutable
 			{
 				begin_scan(nullptr, std::move(root_path));
 			});
@@ -113,9 +113,9 @@ namespace fileserver
 
 		struct directory
 		{
-			Si::path absolute_path;
+			Si::absolute_path absolute_path;
 			Si::linux::watch_descriptor watch;
-			std::map<Si::path, directory> sub_directories;
+			std::map<Si::relative_path, directory> sub_directories;
 		};
 
 		typedef Si::transformation<
@@ -217,14 +217,14 @@ namespace fileserver
 			);
 		}
 
-		void begin_scan(directory *parent, Si::path directory_to_scan)
+		void begin_scan(directory *parent, Si::absolute_path directory_to_scan)
 		{
 			assert(m_root_strand->running_in_this_thread());
 
 			directory *scanned;
 			if (parent)
 			{
-				Si::path name = leaf(directory_to_scan);
+				Si::relative_path name = leaf(directory_to_scan);
 				directory &child = parent->sub_directories[name];
 				scanned = &child;
 			}
@@ -233,7 +233,7 @@ namespace fileserver
 				scanned = &m_root;
 			}
 			scanned->absolute_path = directory_to_scan;
-			scanned->watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan.c_str(), IN_ALL_EVENTS).get();
+			scanned->watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan, IN_ALL_EVENTS).get();
 			m_watch_descriptor_to_directory.insert(std::make_pair(scanned->watch.get_watch_descriptor(), scanned));
 
 			recursive_directory_watcher &shared_this = *this;
@@ -253,7 +253,7 @@ namespace fileserver
 
 		static Si::error_or<std::vector<Si::linux::file_notification>> scan(
 			directory &scanned,
-			Si::path directory_to_scan,
+			Si::absolute_path directory_to_scan,
 			recursive_directory_watcher &shared_this)
 		{
 			boost::system::error_code ec;
@@ -267,14 +267,14 @@ namespace fileserver
 			while (i != boost::filesystem::directory_iterator())
 			{
 				auto leaf = i->path().leaf();
-				Si::path sub_name(leaf);
+				Si::relative_path sub_name(leaf);
 
 				switch (i->status().type())
 				{
 				case boost::filesystem::directory_file:
 					{
 						{
-							Si::path child(i->path().c_str());
+							Si::absolute_path child(i->path().c_str());
 							shared_this.m_root_strand->dispatch([&shared_this, &scanned, child = std::move(child)]() mutable
 							{
 								shared_this.begin_scan(&scanned, std::move(child));
