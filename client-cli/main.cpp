@@ -64,7 +64,7 @@ namespace
 				auto socket_source = Si::virtualize_source(Si::make_observable_source(Si::asio::make_reading_observable(socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size())), yield));
 				{
 					Si::received_from_socket_source response_source(socket_source);
-					boost::optional<Si::http::response> const response = Si::http::parse_response(response_source);
+					Si::optional<Si::http::response> const response = Si::http::parse_response(response_source);
 					if (!response)
 					{
 						return;

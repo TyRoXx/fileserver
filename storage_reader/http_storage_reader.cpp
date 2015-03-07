@@ -82,7 +82,7 @@ namespace fileserver
 		auto receiving = Si::asio::make_reading_observable(socket, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size()));
 		auto receiving_source = Si::virtualize_source(Si::make_observable_source(std::move(receiving), yield));
 		Si::received_from_socket_source response_source(receiving_source);
-		boost::optional<Si::http::response> response_header = Si::http::parse_response(response_source);
+		Si::optional<Si::http::response> response_header = Si::http::parse_response(response_source);
 		if (!response_header)
 		{
 			throw std::logic_error("todo 1");
