@@ -4,6 +4,7 @@
 #include <server/byte.hpp>
 #include <openssl/sha.h>
 #include <array>
+#include <algorithm>
 #include <silicium/source/source.hpp>
 #include <boost/range/begin.hpp>
 #include <boost/range/end.hpp>

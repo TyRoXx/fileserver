@@ -1,17 +1,18 @@
 #ifndef FILESERVER_LINUX_RECURSIVE_DIRECTORY_WATCHER_HPP
 #define FILESERVER_LINUX_RECURSIVE_DIRECTORY_WATCHER_HPP
 
-#include "pool_executor.hpp"
+#include <server/pool_executor.hpp>
 #include <silicium/linux/inotify.hpp>
 #include <silicium/file_notification.hpp>
+#include <silicium/fast_variant.hpp>
 #include <silicium/c_string.hpp>
-#include <silicium/observable/erased_observer.hpp>
-#include <silicium/observable/transform.hpp>
+#include <silicium/utility.hpp>
 #include <silicium/std_threading.hpp>
 #include <silicium/asio/posting_observable.hpp>
 #include <silicium/linux/single_directory_watcher.hpp>
+#include <silicium/observable/erased_observer.hpp>
+#include <silicium/observable/transform.hpp>
 #include <silicium/observable/total_consumer.hpp>
-#include <silicium/utility.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/asio/strand.hpp>
 
