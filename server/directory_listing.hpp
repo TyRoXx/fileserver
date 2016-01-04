@@ -43,7 +43,7 @@ namespace fileserver
 		auto stream = make_sink_stream(std::forward<CharSink>(sink));
 		rapidjson::PrettyWriter<decltype(stream)> writer(stream);
 		writer.StartObject();
-		for (auto const &entry : listing.entries)
+		for (std::map<std::string, typed_reference>::value_type const &entry : listing.entries)
 		{
 			writer.Key(entry.first.data(), entry.first.size());
 			writer.StartObject();
@@ -54,12 +54,12 @@ namespace fileserver
 
 				writer.Key("content");
 				std::string content;
-				auto const &content_digits = get_digest_digits(ref.referenced);
+				boost::iterator_range<byte const *> const content_digits = get_digest_digits(ref.referenced);
 				encode_ascii_hex_digits(content_digits.begin(), content_digits.end(), std::back_inserter(content));
 				writer.String(content.data(), content.size());
 
 				writer.Key("hash");
-				auto const &hash = detail::get_digest_type_name(ref.referenced);
+				std::string const hash = detail::get_digest_type_name(ref.referenced);
 				writer.String(hash.data(), hash.size());
 			}
 			writer.EndObject();

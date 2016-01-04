@@ -31,7 +31,7 @@ namespace fileserver
 
 	inline unknown_digest to_unknown_digest(digest const &original)
 	{
-		auto &&digits = get_digest_digits(original);
+		boost::iterator_range<byte const *> digits = get_digest_digits(original);
 		return unknown_digest{digits.begin(), digits.end()};
 	}
 
@@ -43,7 +43,7 @@ namespace fileserver
 			                               return "SHA256";
 			                           })
 		    << ":";
-		auto &&digits = get_digest_digits(value);
+		boost::iterator_range<byte const *> digits = get_digest_digits(value);
 		encode_ascii_hex_digits(digits.begin(), digits.end(), std::ostreambuf_iterator<char>(out));
 	}
 
@@ -51,7 +51,8 @@ namespace fileserver
 	boost::optional<unknown_digest> parse_digest(InputIterator begin, InputIterator end)
 	{
 		unknown_digest result;
-		auto const rest = decode_ascii_hex_bytes(begin, end, std::back_inserter(result));
+		std::pair<InputIterator, std::back_insert_iterator<unknown_digest>> const rest =
+		    decode_ascii_hex_bytes(begin, end, std::back_inserter(result));
 		if (rest.first != end)
 		{
 			return boost::none;

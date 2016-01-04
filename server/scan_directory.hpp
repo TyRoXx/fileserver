@@ -19,12 +19,12 @@ namespace fileserver
 	{
 		inline Si::error_or<std::pair<typed_reference, location>> hash_file(ventura::absolute_path const &file)
 		{
-			auto opening = ventura::open_reading(safe_c_str(to_native_range(file)));
+			Si::error_or<Si::file_handle> opening = ventura::open_reading(safe_c_str(to_native_range(file)));
 			if (opening.is_error())
 			{
 				return opening.error();
 			}
-			auto &&opened = std::move(opening).get();
+			Si::file_handle opened = opening.move_value();
 			Si::optional<boost::uintmax_t> const size = ventura::file_size(opened.handle).get();
 			if (!size)
 			{
@@ -40,8 +40,8 @@ namespace fileserver
 				                                 assert(static_cast<size_t>(piece.get().size()) <= buffer.size());
 				                                 return piece.get(); // may throw
 				                             });
-			auto sha256_digest = fileserver::sha256(hashable_content);
-			return std::make_pair(typed_reference{blob_content_type, digest{sha256_digest}},
+			sha256_digest hashed = fileserver::sha256(hashable_content);
+			return std::make_pair(typed_reference{blob_content_type, digest{hashed}},
 			                      location{file_system_location{path(file), *size}});
 		}
 	}
@@ -64,7 +64,8 @@ namespace fileserver
 			{
 			case boost::filesystem::regular_file:
 			{
-				auto /*non-const*/ hashed = hash_file(*ventura::absolute_path::create(i->path()));
+				Si::error_or<std::pair<typed_reference, location>> hashed =
+				    hash_file(*ventura::absolute_path::create(i->path()));
 				if (hashed.is_error())
 				{
 					// ignore error for now
@@ -78,7 +79,8 @@ namespace fileserver
 
 			case boost::filesystem::directory_file:
 			{
-				auto /*non-const*/ sub_dir = scan_directory(i->path(), serialize_listing, hash_file);
+				std::pair<file_repository, typed_reference> sub_dir =
+				    scan_directory(i->path(), serialize_listing, hash_file);
 				repository.merge(std::move(sub_dir.first));
 				add_to_listing(sub_dir.second);
 				break;
@@ -88,9 +90,9 @@ namespace fileserver
 				break;
 			}
 		}
-		auto /*non-const*/ typed_serialized_listing = serialize_listing(listing);
-		auto /*non-const*/ &serialized_listing = typed_serialized_listing.first;
-		auto const listing_digest = sha256(Si::make_single_source(
+		std::pair<std::vector<char>, content_type> typed_serialized_listing = serialize_listing(listing);
+		std::vector<char> &serialized_listing = typed_serialized_listing.first;
+		sha256_digest const listing_digest = sha256(Si::make_single_source(
 		    Si::make_iterator_range(serialized_listing.data(), serialized_listing.data() + serialized_listing.size())));
 		repository.available[to_unknown_digest(listing_digest)].emplace_back(
 		    location{in_memory_location{std::move(serialized_listing)}});

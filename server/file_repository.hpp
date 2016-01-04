@@ -19,12 +19,12 @@ namespace fileserver
 
 		void merge(file_repository merged)
 		{
-			for (auto /*non-const*/ &entry : merged.available)
+			for (auto &entry : merged.available)
 			{
-				auto &locations = available[entry.first];
-				for (auto &location : entry.second)
+				std::vector<location> &locations = available[entry.first];
+				for (location &location_entry : entry.second)
 				{
-					locations.emplace_back(std::move(location));
+					locations.emplace_back(std::move(location_entry));
 				}
 			}
 		}

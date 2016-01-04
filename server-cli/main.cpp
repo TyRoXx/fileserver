@@ -176,7 +176,7 @@ namespace fileserver
 		{
 			char const *const begin = data.data();
 			auto sender = make_sender(Si::make_memory_range(begin, begin + data.size()));
-			auto result = yield.get_one(sender);
+			Si::optional<boost::system::error_code> result = yield.get_one(sender);
 			assert(result);
 			return !*result;
 		};
@@ -278,7 +278,7 @@ namespace fileserver
 						        }));
 					        return {};
 					    });
-				    auto const &body = yield.get_one(Si::ref(reading));
+				    Si::optional<std::vector<char>> const &body = yield.get_one(Si::ref(reading));
 				    if (!body)
 				    {
 					    return;
@@ -356,7 +356,7 @@ namespace fileserver
 		    {
 			    for (;;)
 			    {
-				    auto accepted = yield.get_one(Si::ref(clients));
+				    Si::optional<Si::asio::tcp_acceptor_result> accepted = yield.get_one(Si::ref(clients));
 				    if (!accepted)
 				    {
 					    return;
@@ -381,7 +381,7 @@ namespace fileserver
 						};
 					    serve_client(yield, received, make_sender, shutdown, files, root_digest);
 					};
-				    Si::spawn_coroutine(prepare_socket);
+				    Si::spawn_coroutine(std::move(prepare_socket));
 			    }
 			});
 
@@ -457,7 +457,7 @@ namespace fileserver
 					                    std::cerr << events->error() << '\n';
 					                    break;
 				                    }
-				                    auto const &notifications = events->get();
+				                    std::vector<ventura::file_notification> const &notifications = events->get();
 				                    for (ventura::file_notification const &notification : notifications)
 				                    {
 					                    ++event_count;

@@ -43,7 +43,8 @@ namespace fileserver
 		SHA256_Init(&state);
 		for (;;)
 		{
-			auto const &byte_array_view = Si::get(content);
+			// concept: optional of a range of bytes
+			auto byte_array_view = Si::get(content);
 			if (!byte_array_view)
 			{
 				break;

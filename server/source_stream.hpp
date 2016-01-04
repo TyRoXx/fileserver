@@ -35,7 +35,7 @@ namespace fileserver
 		//! character.
 		Ch Take()
 		{
-			auto result = Peek();
+			Ch result = Peek();
 			buffer = Si::none;
 			++position;
 			return result;
