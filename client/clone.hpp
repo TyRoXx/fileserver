@@ -32,16 +32,7 @@ namespace fileserver
 		virtual ~readable_file()
 		{
 		}
-		virtual
-		Si::error_or<
-			std::unique_ptr<
-				Si::source<
-					Si::error_or<
-						Si::memory_range
-					>
-				>
-			>
-		> read(file_offset begin) = 0;
+		virtual Si::error_or<std::unique_ptr<Si::source<Si::error_or<Si::memory_range>>>> read(file_offset begin) = 0;
 	};
 
 	struct read_write_file
@@ -51,24 +42,24 @@ namespace fileserver
 
 #if !SILICIUM_COMPILER_GENERATES_MOVES
 		read_write_file() BOOST_NOEXCEPT
-		{}
-
-		read_write_file(read_write_file &&other) BOOST_NOEXCEPT
-			: readable(std::move(other.readable))
-			, writeable(std::move(other.writeable))
 		{
 		}
 
-		read_write_file &operator = (read_write_file &&other) BOOST_NOEXCEPT
+		read_write_file(read_write_file &&other) BOOST_NOEXCEPT : readable(std::move(other.readable)),
+		                                                          writeable(std::move(other.writeable))
+		{
+		}
+
+		read_write_file &operator=(read_write_file &&other) BOOST_NOEXCEPT
 		{
 			readable = std::move(other.readable);
 			writeable = std::move(other.writeable);
 			return *this;
 		}
 
-		read_write_file(std::unique_ptr<readable_file> readable, std::unique_ptr<writeable_file> writeable) BOOST_NOEXCEPT
-			: readable(std::move(readable))
-			, writeable(std::move(writeable))
+		read_write_file(std::unique_ptr<readable_file> readable,
+		                std::unique_ptr<writeable_file> writeable) BOOST_NOEXCEPT : readable(std::move(readable)),
+		                                                                            writeable(std::move(writeable))
 		{
 		}
 #endif
@@ -85,14 +76,16 @@ namespace fileserver
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) = 0;
 	};
 
-	inline boost::system::error_code write_all(Si::native_file_descriptor destination, boost::iterator_range<char const *> buffer)
+	inline boost::system::error_code write_all(Si::native_file_descriptor destination,
+	                                           boost::iterator_range<char const *> buffer)
 	{
 		std::size_t total_written = 0;
 		while (total_written < static_cast<size_t>(buffer.size()))
 		{
 #ifdef _WIN32
 			DWORD written = 0;
-			DWORD const piece = static_cast<DWORD>(std::min(buffer.size() - total_written, static_cast<size_t>(std::numeric_limits<DWORD>::max())));
+			DWORD const piece = static_cast<DWORD>(
+			    std::min(buffer.size() - total_written, static_cast<size_t>(std::numeric_limits<DWORD>::max())));
 			if (!WriteFile(destination, buffer.begin() + total_written, piece, &written, nullptr))
 			{
 				return boost::system::error_code(GetLastError(), boost::system::native_ecat);
@@ -132,7 +125,7 @@ namespace fileserver
 	struct filesystem_writeable_file : writeable_file
 	{
 		explicit filesystem_writeable_file(std::shared_ptr<Si::file_handle> file)
-			: file(std::move(file))
+		    : file(std::move(file))
 		{
 		}
 
@@ -148,61 +141,40 @@ namespace fileserver
 		}
 
 	private:
-
 		std::shared_ptr<Si::file_handle> file;
 	};
 
 	struct filesystem_readable_file : readable_file
 	{
 		explicit filesystem_readable_file(std::shared_ptr<Si::file_handle> file)
-			: file(std::move(file))
-			, buffer(8192)
+		    : file(std::move(file))
+		    , buffer(8192)
 		{
 		}
 
-		virtual
-		Si::error_or<
-			std::unique_ptr<
-				Si::source<
-					Si::error_or<
-						Si::memory_range
-					>
-				>
-			>
-		> read(file_offset begin) SILICIUM_OVERRIDE
+		virtual Si::error_or<std::unique_ptr<Si::source<Si::error_or<Si::memory_range>>>>
+		read(file_offset begin) SILICIUM_OVERRIDE
 		{
 			boost::system::error_code ec = seek_absolute(file->handle, begin);
 			if (ec)
 			{
 				return ec;
 			}
-			return Si::error_or<
-					std::unique_ptr<
-						Si::source<
-							Si::error_or<
-								Si::memory_range
-							>
-						>
-					>
-				>(Si::to_unique(
-					  Si::Source<Si::error_or<
-					  Si::memory_range
-				  >>::erase(
-				Si::make_transforming_source(
-					ventura::make_file_source(file->handle, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size())),
-					[this](Si::error_or<Si::memory_range> bytes_read)
-					{
-						return Si::map(bytes_read, [this](Si::memory_range bytes_read) -> Si::memory_range
-						{
-							assert(static_cast<size_t>(bytes_read.size()) < buffer.size());
-							return bytes_read;
-						});
-					})
-				)));
+			return Si::error_or<std::unique_ptr<Si::source<Si::error_or<Si::memory_range>>>>(
+			    Si::to_unique(Si::Source<Si::error_or<Si::memory_range>>::erase(Si::make_transforming_source(
+			        ventura::make_file_source(file->handle,
+			                                  Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size())),
+			        [this](Si::error_or<Si::memory_range> bytes_read)
+			        {
+				        return Si::map(bytes_read, [this](Si::memory_range bytes_read) -> Si::memory_range
+				                       {
+					                       assert(static_cast<size_t>(bytes_read.size()) < buffer.size());
+					                       return bytes_read;
+					                   });
+				    }))));
 		}
 
 	private:
-
 		std::shared_ptr<Si::file_handle> file;
 		std::vector<char> buffer;
 	};
@@ -210,7 +182,7 @@ namespace fileserver
 	struct filesystem_directory_manipulator : fileserver::directory_manipulator
 	{
 		explicit filesystem_directory_manipulator(ventura::absolute_path root)
-			: root(std::move(root))
+		    : root(std::move(root))
 		{
 		}
 
@@ -224,7 +196,8 @@ namespace fileserver
 			return Si::make_unique<filesystem_directory_manipulator>(root / ventura::relative_path(name));
 		}
 
-		virtual Si::error_or<std::unique_ptr<writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
+		virtual Si::error_or<std::unique_ptr<writeable_file>>
+		create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
 			auto opened = ventura::create_file(root / ventura::relative_path(name));
 			if (opened.is_error())
@@ -236,24 +209,23 @@ namespace fileserver
 
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::map(ventura::open_read_write((root / ventura::relative_path(name)).safe_c_str()), [](Si::file_handle file) -> read_write_file
-			{
-				auto shared_file = Si::to_shared(std::move(file));
-				return read_write_file
-				{
-					Si::make_unique<filesystem_readable_file>(shared_file),
-					Si::make_unique<filesystem_writeable_file>(shared_file)
-				};
-			});
+			return Si::map(ventura::open_read_write((root / ventura::relative_path(name)).safe_c_str()),
+			               [](Si::file_handle file) -> read_write_file
+			               {
+				               auto shared_file = Si::to_shared(std::move(file));
+				               return read_write_file{Si::make_unique<filesystem_readable_file>(shared_file),
+				                                      Si::make_unique<filesystem_writeable_file>(shared_file)};
+				           });
 		}
 
 	private:
-
 		ventura::absolute_path root;
 	};
 
-	Si::unique_observable<boost::system::error_code>
-	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, storage_reader &server, boost::asio::io_service &io);
+	Si::unique_observable<boost::system::error_code> clone_directory(unknown_digest const &root_digest,
+	                                                                 directory_manipulator &destination,
+	                                                                 storage_reader &server,
+	                                                                 boost::asio::io_service &io);
 }
 
 #endif

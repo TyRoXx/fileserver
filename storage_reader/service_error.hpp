@@ -15,9 +15,8 @@ namespace fileserver
 	{
 		virtual const char *name() const BOOST_SYSTEM_NOEXCEPT SILICIUM_OVERRIDE;
 		virtual std::string message(int ev) const SILICIUM_OVERRIDE;
-		virtual bool equivalent(
-			boost::system::error_code const &code,
-			int condition) const BOOST_SYSTEM_NOEXCEPT SILICIUM_OVERRIDE;
+		virtual bool equivalent(boost::system::error_code const &code,
+		                        int condition) const BOOST_SYSTEM_NOEXCEPT SILICIUM_OVERRIDE;
 	};
 
 	boost::system::error_category const &get_system_error_category();
@@ -32,7 +31,7 @@ namespace boost
 {
 	namespace system
 	{
-		template<>
+		template <>
 		struct is_error_code_enum<fileserver::service_error> : std::true_type
 		{
 		};

@@ -21,16 +21,15 @@ namespace fileserver
 
 	boost::uint64_t location_file_size(location const &location)
 	{
-		return Si::visit<boost::uint64_t>(
-			location,
-			[](file_system_location const &file)
-		{
-			return file.size;
-		},
-			[](in_memory_location const &memory)
-		{
-			return memory.content.size();
-		});
+		return Si::visit<boost::uint64_t>(location,
+		                                  [](file_system_location const &file)
+		                                  {
+			                                  return file.size;
+			                              },
+		                                  [](in_memory_location const &memory)
+		                                  {
+			                                  return memory.content.size();
+			                              });
 	}
 }
 

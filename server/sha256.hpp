@@ -29,7 +29,7 @@ namespace fileserver
 	};
 
 	template <std::size_t ByteSize>
-	bool operator == (fixed_digest<ByteSize> const &left, fixed_digest<ByteSize> const &right)
+	bool operator==(fixed_digest<ByteSize> const &left, fixed_digest<ByteSize> const &right)
 	{
 		return left.bytes == right.bytes;
 	}
@@ -50,7 +50,8 @@ namespace fileserver
 			}
 			using boost::begin;
 			using boost::end;
-			SHA256_Update(&state, begin(*byte_array_view), std::distance(begin(*byte_array_view), end(*byte_array_view)));
+			SHA256_Update(&state, begin(*byte_array_view),
+			              std::distance(begin(*byte_array_view), end(*byte_array_view)));
 		}
 		sha256_digest result;
 		SHA256_Final(result.bytes.data(), &state);

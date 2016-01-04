@@ -1,6 +1,7 @@
 file(GLOB sources "*.hpp" "*.cpp")
 if(FILESERVER_HAS_SQLITE)
-	set(sources ${sources} "sqlite3/sqlite.cpp")
+	set(sources ${sources} "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3/sqlite.cpp")
 endif()
+set(formatted ${formatted} ${sources} PARENT_SCOPE)
 add_executable(test ${sources})
 target_link_libraries(test client ${Boost_LIBRARIES} ${SQLPP11SQLITE3_LIBRARIES} ${SQLITE_LIBRARIES})

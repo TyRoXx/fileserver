@@ -19,9 +19,10 @@ namespace Si
 	{
 	};
 
-	template <class Optional, class Transformation, class = typename std::enable_if<is_optional<typename std::decay<Optional>::type>::value, void>::type>
+	template <class Optional, class Transformation,
+	          class = typename std::enable_if<is_optional<typename std::decay<Optional>::type>::value, void>::type>
 	auto map(Optional &&value, Transformation &&transform)
-		-> boost::optional<decltype(std::forward<Transformation>(transform)(*std::forward<Optional>(value)))>
+	    -> boost::optional<decltype(std::forward<Transformation>(transform)(*std::forward<Optional>(value)))>
 	{
 		if (value)
 		{
@@ -61,7 +62,7 @@ namespace
 	struct readonly_directory_manipulator : fileserver::directory_manipulator
 	{
 		explicit readonly_directory_manipulator(boost::filesystem::path location)
-			: location(std::move(location))
+		    : location(std::move(location))
 		{
 		}
 
@@ -70,25 +71,27 @@ namespace
 			return {};
 		}
 
-		virtual std::unique_ptr<fileserver::directory_manipulator> edit_subdirectory(std::string const &name) SILICIUM_OVERRIDE
+		virtual std::unique_ptr<fileserver::directory_manipulator>
+		edit_subdirectory(std::string const &name) SILICIUM_OVERRIDE
 		{
 			return Si::make_unique<readonly_directory_manipulator>(location / name);
 		}
 
-		virtual Si::error_or<std::unique_ptr<fileserver::writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
+		virtual Si::error_or<std::unique_ptr<fileserver::writeable_file>>
+		create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
 			boost::ignore_unused_variable_warning(name);
 			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
-		virtual Si::error_or<fileserver::read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
+		virtual Si::error_or<fileserver::read_write_file>
+		read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
 			boost::ignore_unused_variable_warning(name);
 			return boost::system::error_code(EACCES, boost::system::system_category());
 		}
 
 	private:
-
 		boost::filesystem::path location;
 	};
 
@@ -96,33 +99,39 @@ namespace
 	{
 		boost::unordered_map<fileserver::unknown_digest, std::shared_ptr<std::vector<char> const>> files;
 
-		virtual Si::unique_observable<Si::error_or<fileserver::linear_file>> open(fileserver::unknown_digest const &name) SILICIUM_OVERRIDE
+		virtual Si::unique_observable<Si::error_or<fileserver::linear_file>>
+		open(fileserver::unknown_digest const &name) SILICIUM_OVERRIDE
 		{
 			auto it = files.find(name);
 			if (it == files.end())
 			{
-				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(boost::system::error_code(fileserver::service_error::file_not_found))));
+				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(
+				    boost::system::error_code(fileserver::service_error::file_not_found))));
 			}
 			auto file = it->second;
-			return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(
-				fileserver::linear_file{
-					static_cast<fileserver::file_offset>(file->size()),
-					Si::erase_unique(Si::take(Si::make_function_observable2([file]() -> Si::error_or<Si::memory_range>
-					{
-						return Si::make_memory_range(file->data(), file->data() + file->size());
-					}), 1))
-				}
-			)));
+			return Si::erase_unique(
+			    Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(fileserver::linear_file{
+			        static_cast<fileserver::file_offset>(file->size()),
+			        Si::erase_unique(Si::take(Si::make_function_observable2([file]() -> Si::error_or<Si::memory_range>
+			                                                                {
+				                                                                return Si::make_memory_range(
+				                                                                    file->data(),
+				                                                                    file->data() + file->size());
+				                                                            }),
+			                                  1))})));
 		}
 
-		virtual Si::unique_observable<Si::error_or<fileserver::file_offset>> size(fileserver::unknown_digest const &name) SILICIUM_OVERRIDE
+		virtual Si::unique_observable<Si::error_or<fileserver::file_offset>>
+		size(fileserver::unknown_digest const &name) SILICIUM_OVERRIDE
 		{
 			auto it = files.find(name);
 			if (it == files.end())
 			{
-				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(boost::system::error_code(fileserver::service_error::file_not_found))));
+				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(
+				    boost::system::error_code(fileserver::service_error::file_not_found))));
 			}
-			return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(it->second->size())));
+			return Si::erase_unique(
+			    Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(it->second->size())));
 		}
 	};
 }
@@ -135,11 +144,12 @@ BOOST_AUTO_TEST_CASE(client_clone_empty)
 	memory_storage_reader service;
 	service.files.insert(std::make_pair(root, Si::to_shared(std::vector<char>{'{', '}'})));
 	bool has_finished = false;
-	auto all = Si::for_each(fileserver::clone_directory(root, dir, service, io), [&has_finished](boost::system::error_code ec)
-	{
-		has_finished = true;
-		BOOST_CHECK_EQUAL(boost::system::error_code(), ec);
-	});
+	auto all =
+	    Si::for_each(fileserver::clone_directory(root, dir, service, io), [&has_finished](boost::system::error_code ec)
+	                 {
+		                 has_finished = true;
+		                 BOOST_CHECK_EQUAL(boost::system::error_code(), ec);
+		             });
 	all.start();
 	io.run();
 	BOOST_CHECK(has_finished);

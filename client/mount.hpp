@@ -7,7 +7,8 @@
 
 namespace fileserver
 {
-	void mount_directory(fileserver::unknown_digest const &root_digest, fileserver::path const &mount_point, boost::asio::ip::tcp::endpoint const &server);
+	void mount_directory(fileserver::unknown_digest const &root_digest, fileserver::path const &mount_point,
+	                     boost::asio::ip::tcp::endpoint const &server);
 }
 
 #endif

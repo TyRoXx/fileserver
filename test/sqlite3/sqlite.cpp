@@ -4,13 +4,8 @@
 #include <sqlite3.h>
 #include <boost/test/unit_test.hpp>
 
-SQLPP_DECLARE_TABLE(
-	(known_file_location)
-	,
-	(hash, varchar(64), SQLPP_NOT_NULL)
-	(hash_code, blob, SQLPP_NOT_NULL)
-	(uri, text, SQLPP_NOT_NULL)
-)
+SQLPP_DECLARE_TABLE((known_file_location),
+                    (hash, varchar(64), SQLPP_NOT_NULL)(hash_code, blob, SQLPP_NOT_NULL)(uri, text, SQLPP_NOT_NULL))
 
 BOOST_AUTO_TEST_CASE(test_sqlpp11_sqlite3)
 {
@@ -20,14 +15,12 @@ BOOST_AUTO_TEST_CASE(test_sqlpp11_sqlite3)
 	sqlpp::sqlite3::connection database(config);
 	known_file_location::known_file_location location;
 
-	//TODO: create table from the existing description in the C++ code
-	database.execute(
-		"CREATE TABLE known_file_location ("
-		"	hash varchar(64) NOT NULL,"
-		"	hash_code blob NOT NULL,"
-		"	uri text NOT NULL"
-		")"
-	);
+	// TODO: create table from the existing description in the C++ code
+	database.execute("CREATE TABLE known_file_location ("
+	                 "	hash varchar(64) NOT NULL,"
+	                 "	hash_code blob NOT NULL,"
+	                 "	uri text NOT NULL"
+	                 ")");
 
 	database(insert_into(location).set(location.hash = "sha256", location.hash_code = "", location.uri = "/tmp/t.bin"));
 

@@ -6,7 +6,7 @@
 #include <silicium/variant.hpp>
 #include <boost/range/iterator_range.hpp>
 #ifndef _MSC_VER
-#	include <boost/container/string.hpp>
+#include <boost/container/string.hpp>
 #endif
 
 namespace fileserver
@@ -14,20 +14,19 @@ namespace fileserver
 	using digest = Si::variant<sha256_digest>;
 	using unknown_digest =
 #ifdef _MSC_VER
-		std::basic_string<byte>
+	    std::basic_string<byte>
 #else
-		boost::container::basic_string<byte>
+	    boost::container::basic_string<byte>
 #endif
-		;
+	    ;
 
 	inline boost::iterator_range<byte const *> get_digest_digits(digest const &original)
 	{
-		return Si::visit<boost::iterator_range<byte const *>>(
-			original,
-			[](sha256_digest const &d)
-		{
-			return boost::make_iterator_range(d.bytes.data(), d.bytes.data() + d.bytes.size());
-		});
+		return Si::visit<boost::iterator_range<byte const *>>(original, [](sha256_digest const &d)
+		                                                      {
+			                                                      return boost::make_iterator_range(
+			                                                          d.bytes.data(), d.bytes.data() + d.bytes.size());
+			                                                  });
 	}
 
 	inline unknown_digest to_unknown_digest(digest const &original)
@@ -38,10 +37,12 @@ namespace fileserver
 
 	inline void print(std::ostream &out, digest const &value)
 	{
-		out << Si::visit<char const *>(value, [](sha256_digest const &)
-		{
-			return "SHA256";
-		}) << ":";
+		out << Si::visit<char const *>(value,
+		                               [](sha256_digest const &)
+		                               {
+			                               return "SHA256";
+			                           })
+		    << ":";
 		auto &&digits = get_digest_digits(value);
 		encode_ascii_hex_digits(digits.begin(), digits.end(), std::ostreambuf_iterator<char>(out));
 	}

@@ -46,7 +46,9 @@ namespace fileserver
 			return boost::system::error_code();
 		}
 
-		boost::system::error_code clone_regular_file(storage_reader &service, std::string const &file_name, unknown_digest const &blob_digest, directory_manipulator &destination, Si::yield_context yield)
+		boost::system::error_code clone_regular_file(storage_reader &service, std::string const &file_name,
+		                                             unknown_digest const &blob_digest,
+		                                             directory_manipulator &destination, Si::yield_context yield)
 		{
 			Si::error_or<linear_file> maybe_remote_file;
 			yield.get_one(service.open(blob_digest), maybe_remote_file);
@@ -65,7 +67,9 @@ namespace fileserver
 			return copy_bytes(content_source, remote_file.size, *local_file);
 		}
 
-		boost::system::error_code clone_recursively(storage_reader &service, unknown_digest const &tree_digest, directory_manipulator &destination, Si::yield_context yield, boost::asio::io_service &io)
+		boost::system::error_code clone_recursively(storage_reader &service, unknown_digest const &tree_digest,
+		                                            directory_manipulator &destination, Si::yield_context yield,
+		                                            boost::asio::io_service &io)
 		{
 			{
 				boost::system::error_code const ec = destination.require_exists();
@@ -81,52 +85,60 @@ namespace fileserver
 				return maybe_tree_file.error();
 			}
 			linear_file tree_file = std::move(maybe_tree_file.get());
-			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
+			auto receiving_source =
+			    Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
-			Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));
+			Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed =
+			    deserialize_json(std::move(content_source));
 			return Si::visit<boost::system::error_code>(
-				parsed,
-				[&](std::unique_ptr<directory_listing> const &listing) -> boost::system::error_code
-			{
-				for (auto const &entry : listing->entries)
-				{
-					if (entry.second.type == "blob")
-					{
-						boost::system::error_code const ec = clone_regular_file(service, entry.first, to_unknown_digest(entry.second.referenced), destination, yield);
-						if (ec)
-						{
-							return ec;
-						}
-					}
-					else if (entry.second.type == "json_v1")
-					{
-						boost::system::error_code const ec = clone_recursively(service, to_unknown_digest(entry.second.referenced), *destination.edit_subdirectory(entry.first), yield, io);
-						if (ec)
-						{
-							return ec;
-						}
-					}
-					else
-					{
-						throw std::logic_error("unknown directory entry type"); //TODO
-					}
-				}
-				return boost::system::error_code();
-			},
-				[](std::size_t) -> boost::system::error_code
-			{
-				throw std::logic_error("todo");
-			});
+			    parsed,
+			    [&](std::unique_ptr<directory_listing> const &listing) -> boost::system::error_code
+			    {
+				    for (auto const &entry : listing->entries)
+				    {
+					    if (entry.second.type == "blob")
+					    {
+						    boost::system::error_code const ec = clone_regular_file(
+						        service, entry.first, to_unknown_digest(entry.second.referenced), destination, yield);
+						    if (ec)
+						    {
+							    return ec;
+						    }
+					    }
+					    else if (entry.second.type == "json_v1")
+					    {
+						    boost::system::error_code const ec =
+						        clone_recursively(service, to_unknown_digest(entry.second.referenced),
+						                          *destination.edit_subdirectory(entry.first), yield, io);
+						    if (ec)
+						    {
+							    return ec;
+						    }
+					    }
+					    else
+					    {
+						    throw std::logic_error("unknown directory entry type"); // TODO
+					    }
+				    }
+				    return boost::system::error_code();
+				},
+			    [](std::size_t) -> boost::system::error_code
+			    {
+				    throw std::logic_error("todo");
+				});
 		}
 	}
 
-	Si::unique_observable<boost::system::error_code>
-	clone_directory(unknown_digest const &root_digest, directory_manipulator &destination, storage_reader &server, boost::asio::io_service &io)
+	Si::unique_observable<boost::system::error_code> clone_directory(unknown_digest const &root_digest,
+	                                                                 directory_manipulator &destination,
+	                                                                 storage_reader &server,
+	                                                                 boost::asio::io_service &io)
 	{
-		return Si::erase_unique(Si::make_coroutine_generator<boost::system::error_code>([&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
-		{
-			boost::system::error_code const ec = clone_recursively(server, root_digest, destination, yield, io);
-			yield(ec);
-		}));
+		return Si::erase_unique(Si::make_coroutine_generator<boost::system::error_code>(
+		    [&root_digest, &destination, &server, &io](Si::push_context<boost::system::error_code> yield)
+		    {
+			    boost::system::error_code const ec = clone_recursively(server, root_digest, destination, yield, io);
+			    yield(ec);
+			}));
 	}
 }

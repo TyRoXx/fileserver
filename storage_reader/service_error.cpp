@@ -13,14 +13,14 @@ namespace fileserver
 	{
 		switch (ev)
 		{
-		case static_cast<int>(service_error::file_not_found) : return "file not found";
+		case static_cast<int>(service_error::file_not_found):
+			return "file not found";
 		}
 		SILICIUM_UNREACHABLE();
 	}
 
-	bool service_error_category::equivalent(
-		boost::system::error_code const &code,
-		int condition) const BOOST_SYSTEM_NOEXCEPT
+	bool service_error_category::equivalent(boost::system::error_code const &code,
+	                                        int condition) const BOOST_SYSTEM_NOEXCEPT
 	{
 		boost::ignore_unused_variable_warning(code);
 		boost::ignore_unused_variable_warning(condition);

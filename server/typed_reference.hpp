@@ -3,9 +3,9 @@
 
 #include <server/digest.hpp>
 #ifdef _MSC_VER
-#	include <string>
+#include <string>
 #else
-#	include <boost/container/string.hpp>
+#include <boost/container/string.hpp>
 #endif
 #include <ostream>
 #include <tuple>
@@ -14,11 +14,11 @@ namespace fileserver
 {
 	using content_type =
 #ifdef _MSC_VER
-		std::string
+	    std::string
 #else
-		boost::container::string
+	    boost::container::string
 #endif
-		;
+	    ;
 
 	content_type const blob_content_type = "blob";
 
@@ -32,13 +32,13 @@ namespace fileserver
 		}
 
 		explicit typed_reference(content_type type, digest referenced)
-			: type(std::move(type))
-			, referenced(std::move(referenced))
+		    : type(std::move(type))
+		    , referenced(std::move(referenced))
 		{
 		}
 	};
 
-	inline bool operator == (typed_reference const &left, typed_reference const &right)
+	inline bool operator==(typed_reference const &left, typed_reference const &right)
 	{
 		return std::tie(left.type, left.referenced) == std::tie(right.type, right.referenced);
 	}

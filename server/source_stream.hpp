@@ -12,7 +12,7 @@ namespace fileserver
 		using Ch = char;
 
 		explicit source_stream(Source source)
-			: source(std::move(source))
+		    : source(std::move(source))
 		{
 		}
 
@@ -31,7 +31,8 @@ namespace fileserver
 			return '\0';
 		}
 
-		//! Read the current character from stream and moving the read cursor to next character.
+		//! Read the current character from stream and moving the read cursor to next
+		//! character.
 		Ch Take()
 		{
 			auto result = Peek();
@@ -49,7 +50,7 @@ namespace fileserver
 
 		//! Begin writing operation at the current read pointer.
 		//! \return The begin writer pointer.
-		Ch* PutBegin()
+		Ch *PutBegin()
 		{
 			SILICIUM_UNREACHABLE();
 		}
@@ -70,14 +71,13 @@ namespace fileserver
 		//! End the writing operation.
 		//! \param begin The begin write pointer returned by PutBegin().
 		//! \return Number of characters written.
-		size_t PutEnd(Ch* begin)
+		size_t PutEnd(Ch *begin)
 		{
 			boost::ignore_unused_variable_warning(begin);
 			SILICIUM_UNREACHABLE();
 		}
 
 	private:
-
 		Source source;
 		std::size_t position = 0;
 		Si::optional<char> buffer;
@@ -86,7 +86,7 @@ namespace fileserver
 	template <class Source>
 	auto make_source_stream(Source &&source)
 #if !SILICIUM_COMPILER_HAS_AUTO_RETURN_TYPE
-		-> source_stream<typename std::decay<Source>::type>
+	    -> source_stream<typename std::decay<Source>::type>
 #endif
 	{
 		return source_stream<typename std::decay<Source>::type>(std::forward<Source>(source));

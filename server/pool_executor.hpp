@@ -14,15 +14,15 @@ namespace fileserver
 		}
 
 		explicit pool_executor(std::size_t threads)
-			: m_immovable(Si::make_unique<immovable>())
+		    : m_immovable(Si::make_unique<immovable>())
 		{
 			for (std::size_t i = 0; i < threads; ++i)
 			{
 				boost::asio::io_service &queue = m_immovable->m_work_queue;
 				m_workers.emplace_back(ThreadingAPI::launch_async([&queue]
-				{
-					queue.run();
-				}));
+				                                                  {
+					                                                  queue.run();
+					                                              }));
 			}
 		}
 
@@ -34,14 +34,13 @@ namespace fileserver
 		}
 
 	private:
-
 		struct immovable
 		{
 			boost::asio::io_service m_work_queue;
 			boost::asio::io_service::work m_waiting_for_work;
 
 			immovable()
-				: m_waiting_for_work(m_work_queue)
+			    : m_waiting_for_work(m_work_queue)
 			{
 			}
 		};

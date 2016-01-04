@@ -6,7 +6,7 @@
 #include <server/source_stream.hpp>
 #include <map>
 
-//workaround for a bug in rapidjson (SizeType is "unsigned" by default)
+// workaround for a bug in rapidjson (SizeType is "unsigned" by default)
 #define RAPIDJSON_NO_SIZETYPEDEFINE
 namespace rapidjson
 {
@@ -27,13 +27,11 @@ namespace fileserver
 	{
 		inline std::string const &get_digest_type_name(digest const &instance)
 		{
-			return Si::visit<std::string const &>(
-				instance,
-				[](sha256_digest const &) -> std::string const &
-			{
-				static std::string const name = "SHA256";
-				return name;
-			});
+			return Si::visit<std::string const &>(instance, [](sha256_digest const &) -> std::string const &
+			                                      {
+				                                      static std::string const name = "SHA256";
+				                                      return name;
+				                                  });
 		}
 	}
 
@@ -70,7 +68,8 @@ namespace fileserver
 	}
 
 	template <class CharSource>
-	inline Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> deserialize_json(CharSource &&serialized)
+	inline Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t>
+	deserialize_json(CharSource &&serialized)
 	{
 		rapidjson::Document document;
 		{
@@ -111,7 +110,8 @@ namespace fileserver
 			{
 				throw std::logic_error("todo 3");
 			}
-			auto const &parsed_content = parse_digest(content.GetString(), content.GetString() + content.GetStringLength());
+			auto const &parsed_content =
+			    parse_digest(content.GetString(), content.GetString() + content.GetStringLength());
 			if (!parsed_content)
 			{
 				throw std::logic_error("todo 4");
@@ -138,11 +138,8 @@ namespace fileserver
 			}
 
 			listing->entries.insert(std::make_pair(
-				std::string(name.GetString(), name.GetStringLength()),
-				typed_reference(
-					content_type(type.GetString(), type.GetStringLength()),
-					content_digest
-				)));
+			    std::string(name.GetString(), name.GetStringLength()),
+			    typed_reference(content_type(type.GetString(), type.GetStringLength()), content_digest)));
 		}
 		return std::move(listing);
 	}

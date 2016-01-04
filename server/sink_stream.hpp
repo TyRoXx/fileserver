@@ -13,7 +13,7 @@ namespace fileserver
 		using Ch = char;
 
 		explicit sink_stream(Sink sink)
-			: sink(std::move(sink))
+		    : sink(std::move(sink))
 		{
 		}
 
@@ -23,7 +23,8 @@ namespace fileserver
 			SILICIUM_UNREACHABLE();
 		}
 
-		//! Read the current character from stream and moving the read cursor to next character.
+		//! Read the current character from stream and moving the read cursor to next
+		//! character.
 		Ch Take()
 		{
 			SILICIUM_UNREACHABLE();
@@ -38,7 +39,7 @@ namespace fileserver
 
 		//! Begin writing operation at the current read pointer.
 		//! \return The begin writer pointer.
-		Ch* PutBegin()
+		Ch *PutBegin()
 		{
 			SILICIUM_UNREACHABLE();
 		}
@@ -57,20 +58,19 @@ namespace fileserver
 		//! End the writing operation.
 		//! \param begin The begin write pointer returned by PutBegin().
 		//! \return Number of characters written.
-		size_t PutEnd(Ch* begin)
+		size_t PutEnd(Ch *begin)
 		{
 			SILICIUM_UNREACHABLE();
 		}
 
 	private:
-
 		Sink sink;
 	};
 
 	template <class Sink>
 	auto make_sink_stream(Sink &&sink)
 #if !SILICIUM_COMPILER_HAS_AUTO_RETURN_TYPE
-		-> sink_stream<typename std::decay<Sink>::type>
+	    -> sink_stream<typename std::decay<Sink>::type>
 #endif
 	{
 		return sink_stream<typename std::decay<Sink>::type>(std::forward<Sink>(sink));

@@ -21,7 +21,9 @@ namespace fileserver
 	namespace detail
 	{
 		template <class OutputIterator>
-		void convert_to_portable_notifications_generic(std::vector<ventura::linux::file_notification> &&linux_notifications, ventura::relative_path const &root, OutputIterator portable_out)
+		void
+		convert_to_portable_notifications_generic(std::vector<ventura::linux::file_notification> &&linux_notifications,
+		                                          ventura::relative_path const &root, OutputIterator portable_out)
 		{
 			for (ventura::linux::file_notification &linux_notification : linux_notifications)
 			{
@@ -35,11 +37,14 @@ namespace fileserver
 			}
 		}
 
-		std::vector<ventura::file_notification> convert_to_portable_notifications(std::vector<ventura::linux::file_notification> &&linux_notifications, ventura::relative_path const &root)
+		std::vector<ventura::file_notification>
+		convert_to_portable_notifications(std::vector<ventura::linux::file_notification> &&linux_notifications,
+		                                  ventura::relative_path const &root)
 		{
 			std::vector<ventura::file_notification> portable_notifications;
 			portable_notifications.reserve(linux_notifications.size());
-			convert_to_portable_notifications_generic(std::move(linux_notifications), root, std::back_inserter(portable_notifications));
+			convert_to_portable_notifications_generic(std::move(linux_notifications), root,
+			                                          std::back_inserter(portable_notifications));
 			return portable_notifications;
 		}
 	}
@@ -61,24 +66,19 @@ namespace fileserver
 		{
 			m_root_path = std::move(root);
 			m_root_strand = Si::make_unique<boost::asio::io_service::strand>(io);
-			m_inotify = notification_consumer(
-				notification_handler(
-					[this](std::vector<ventura::linux::file_notification> notifications)
-					{
-						handle_file_notifications(std::move(notifications));
-						return Si::nothing();
-					},
-					Si::asio::posting_observable<ventura::linux::inotify_observable, boost::asio::io_service::strand>(
-						*m_root_strand,
-						ventura::linux::inotify_observable(io)
-					)
-				)
-			);
+			m_inotify = notification_consumer(notification_handler(
+			    [this](std::vector<ventura::linux::file_notification> notifications)
+			    {
+				    handle_file_notifications(std::move(notifications));
+				    return Si::nothing();
+				},
+			    Si::asio::posting_observable<ventura::linux::inotify_observable, boost::asio::io_service::strand>(
+			        *m_root_strand, ventura::linux::inotify_observable(io))));
 			m_scanners = pool_executor<Si::std_threading>(std::thread::hardware_concurrency());
 			m_root_strand->dispatch([this]() mutable
-			{
-				begin_scan(nullptr, m_root_path);
-			});
+			                        {
+				                        begin_scan(nullptr, m_root_path);
+				                    });
 			m_inotify.start();
 			return {};
 		}
@@ -86,33 +86,32 @@ namespace fileserver
 		template <class Observer>
 		void async_get_one(Observer &&receiver)
 		{
-			//TODO: avoid the additional indirection (shared_ptr -> unique_ptr -> observer)
+			// TODO: avoid the additional indirection (shared_ptr -> unique_ptr ->
+			// observer)
 			auto movable_receiver = Si::to_shared(Si::erased_observer<element_type>(std::forward<Observer>(receiver)));
 			m_root_strand->dispatch(
-				[movable_receiver, this]()
-			{
-				Si::visit<void>(
-					m_receiver_or_result,
-					[this, movable_receiver](Si::nothing)
-					{
-						m_receiver_or_result = std::move(*movable_receiver);
-					},
-					[](Si::erased_observer<element_type> &)
-					{
-						SILICIUM_UNREACHABLE();
-					},
-					[this, movable_receiver](Si::error_or<std::vector<ventura::file_notification>> &existing_result)
-					{
-						element_type result = std::move(existing_result);
-						m_receiver_or_result = Si::nothing();
-						movable_receiver->got_element(std::move(result));
-					}
-				);
-			});
+			    [movable_receiver, this]()
+			    {
+				    Si::visit<void>(
+				        m_receiver_or_result,
+				        [this, movable_receiver](Si::nothing)
+				        {
+					        m_receiver_or_result = std::move(*movable_receiver);
+					    },
+				        [](Si::erased_observer<element_type> &)
+				        {
+					        SILICIUM_UNREACHABLE();
+					    },
+				        [this, movable_receiver](Si::error_or<std::vector<ventura::file_notification>> &existing_result)
+				        {
+					        element_type result = std::move(existing_result);
+					        m_receiver_or_result = Si::nothing();
+					        movable_receiver->got_element(std::move(result));
+					    });
+				});
 		}
 
 	private:
-
 		struct directory
 		{
 			ventura::relative_path relative_path;
@@ -120,13 +119,9 @@ namespace fileserver
 			std::map<ventura::relative_path, directory> sub_directories;
 		};
 
-		typedef Si::transformation<
-			std::function<Si::nothing (std::vector<ventura::linux::file_notification>)>,
-			Si::asio::posting_observable<
-				ventura::linux::inotify_observable,
-				boost::asio::io_service::strand
-			>
-		> notification_handler;
+		typedef Si::transformation<std::function<Si::nothing(std::vector<ventura::linux::file_notification>)>,
+		                           Si::asio::posting_observable<ventura::linux::inotify_observable,
+		                                                        boost::asio::io_service::strand>> notification_handler;
 
 		typedef Si::total_consumer<notification_handler> notification_consumer;
 
@@ -135,11 +130,8 @@ namespace fileserver
 		directory m_root;
 		ventura::absolute_path m_root_path;
 		std::map<int, directory *> m_watch_descriptor_to_directory;
-		Si::variant<
-			Si::nothing,
-			Si::erased_observer<element_type>,
-			Si::error_or<std::vector<ventura::file_notification>>
-		> m_receiver_or_result;
+		Si::variant<Si::nothing, Si::erased_observer<element_type>,
+		            Si::error_or<std::vector<ventura::file_notification>>> m_receiver_or_result;
 		pool_executor<Si::std_threading> m_scanners;
 
 		directory *find_directory_by_watch_descriptor(int wd) const BOOST_NOEXCEPT
@@ -163,13 +155,15 @@ namespace fileserver
 
 			for (ventura::linux::file_notification &notification : notifications)
 			{
-				directory * const notification_dir = find_directory_by_watch_descriptor(notification.watch_descriptor);
+				directory *const notification_dir = find_directory_by_watch_descriptor(notification.watch_descriptor);
 				if (!notification_dir)
 				{
 					continue;
 				}
 
-				Si::optional<ventura::file_notification> portable_notification = ventura::linux::to_portable_file_notification(std::move(notification), notification_dir->relative_path);
+				Si::optional<ventura::file_notification> portable_notification =
+				    ventura::linux::to_portable_file_notification(std::move(notification),
+				                                                  notification_dir->relative_path);
 				if (!portable_notification)
 				{
 					continue;
@@ -178,15 +172,15 @@ namespace fileserver
 				switch (portable_notification->type)
 				{
 				case ventura::file_notification_type::add:
+				{
+					if (!portable_notification->is_directory)
 					{
-						if (!portable_notification->is_directory)
-						{
-							break;
-						}
-						assert(notification_dir);
-						begin_scan(notification_dir, m_root_path / notification_dir->relative_path / notification.name);
 						break;
 					}
+					assert(notification_dir);
+					begin_scan(notification_dir, m_root_path / notification_dir->relative_path / notification.name);
+					break;
+				}
 
 				case ventura::file_notification_type::remove:
 				case ventura::file_notification_type::move_self:
@@ -209,23 +203,22 @@ namespace fileserver
 			assert(m_root_strand->running_in_this_thread());
 
 			Si::visit<void>(
-				m_receiver_or_result,
-				[this, &notifications](Si::nothing)
-				{
-					m_receiver_or_result = std::move(notifications);
+			    m_receiver_or_result,
+			    [this, &notifications](Si::nothing)
+			    {
+				    m_receiver_or_result = std::move(notifications);
 				},
-				[this, &notifications](Si::erased_observer<element_type> &receiver)
-				{
-					auto receiver_on_stack = std::move(receiver);
-					m_receiver_or_result = Si::nothing();
-					receiver_on_stack.got_element(std::move(notifications));
+			    [this, &notifications](Si::erased_observer<element_type> &receiver)
+			    {
+				    auto receiver_on_stack = std::move(receiver);
+				    m_receiver_or_result = Si::nothing();
+				    receiver_on_stack.got_element(std::move(notifications));
 				},
-				[this, &notifications](Si::error_or<std::vector<ventura::file_notification>> &existing_result)
-				{
-					boost::ignore_unused_variable_warning(existing_result);
-					throw std::logic_error("todo");
-				}
-			);
+			    [this, &notifications](Si::error_or<std::vector<ventura::file_notification>> &existing_result)
+			    {
+				    boost::ignore_unused_variable_warning(existing_result);
+				    throw std::logic_error("todo");
+				});
 		}
 
 		void begin_scan(directory *parent, ventura::absolute_path directory_to_scan)
@@ -245,28 +238,24 @@ namespace fileserver
 				scanned = &m_root;
 				assert(scanned->relative_path.empty());
 			}
-			scanned->watch = m_inotify.get_input().get_input().get_input().watch(directory_to_scan, IN_ALL_EVENTS).get();
+			scanned->watch =
+			    m_inotify.get_input().get_input().get_input().watch(directory_to_scan, IN_ALL_EVENTS).get();
 			m_watch_descriptor_to_directory.insert(std::make_pair(scanned->watch.get_watch_descriptor(), scanned));
 
 			recursive_directory_watcher &shared_this = *this;
-			m_scanners.submit([&shared_this, scanned, directory_to_scan = std::move(directory_to_scan)]() mutable
-			{
-				auto result = scan(
-					*scanned,
-					std::move(directory_to_scan),
-					shared_this
-				);
-				shared_this.m_root_strand->dispatch([&shared_this, scanned, result = std::move(result)]() mutable
-				{
-					shared_this.notify_observer(std::move(result));
-				});
-			});
+			m_scanners.submit([&shared_this, scanned, directory_to_scan = std::move(directory_to_scan) ]() mutable
+			                  {
+				                  auto result = scan(*scanned, std::move(directory_to_scan), shared_this);
+				                  shared_this.m_root_strand->dispatch(
+				                      [&shared_this, scanned, result = std::move(result) ]() mutable
+				                      {
+					                      shared_this.notify_observer(std::move(result));
+					                  });
+				              });
 		}
 
-		static Si::error_or<std::vector<ventura::file_notification>> scan(
-			directory &scanned,
-			ventura::absolute_path directory_to_scan,
-			recursive_directory_watcher &shared_this)
+		static Si::error_or<std::vector<ventura::file_notification>>
+		scan(directory &scanned, ventura::absolute_path directory_to_scan, recursive_directory_watcher &shared_this)
 		{
 			boost::system::error_code ec;
 			boost::filesystem::directory_iterator i(directory_to_scan.c_str(), ec);
@@ -284,24 +273,27 @@ namespace fileserver
 				switch (i->status().type())
 				{
 				case boost::filesystem::directory_file:
+				{
 					{
-						{
-							Si::optional<ventura::absolute_path> child = ventura::absolute_path::create(i->path());
-							assert(child);
-							shared_this.m_root_strand->dispatch([&shared_this, &scanned, child = std::move(*child)]() mutable
-							{
-								shared_this.begin_scan(&scanned, std::move(child));
+						Si::optional<ventura::absolute_path> child = ventura::absolute_path::create(i->path());
+						assert(child);
+						shared_this.m_root_strand->dispatch(
+						    [&shared_this, &scanned, child = std::move(*child) ]() mutable
+						    {
+							    shared_this.begin_scan(&scanned, std::move(child));
 							});
-						}
-						artificial_notifications.emplace_back(ventura::file_notification_type::add, scanned.relative_path / sub_name, true);
-						break;
 					}
+					artificial_notifications.emplace_back(ventura::file_notification_type::add,
+					                                      scanned.relative_path / sub_name, true);
+					break;
+				}
 
 				case boost::filesystem::regular_file:
-					{
-						artificial_notifications.emplace_back(ventura::file_notification_type::add, scanned.relative_path / sub_name, false);
-						break;
-					}
+				{
+					artificial_notifications.emplace_back(ventura::file_notification_type::add,
+					                                      scanned.relative_path / sub_name, false);
+					break;
+				}
 
 				default:
 					break;

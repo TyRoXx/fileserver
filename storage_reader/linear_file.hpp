@@ -13,7 +13,7 @@ namespace fileserver
 
 	struct linear_file
 #ifdef _MSC_VER
-		: boost::noncopyable
+	    : boost::noncopyable
 #endif
 	{
 		file_offset size;
@@ -25,18 +25,18 @@ namespace fileserver
 		}
 
 		linear_file(file_offset size, Si::unique_observable<Si::error_or<Si::memory_range>> content)
-			: size(size)
-			, content(std::move(content))
+		    : size(size)
+		    , content(std::move(content))
 		{
 		}
 
 		linear_file(linear_file &&other)
-			: size(other.size)
-			, content(std::move(other.content))
+		    : size(other.size)
+		    , content(std::move(other.content))
 		{
 		}
 
-		linear_file &operator = (linear_file &&other)
+		linear_file &operator=(linear_file &&other)
 		{
 			size = other.size;
 			content = std::move(other.content);
@@ -44,7 +44,7 @@ namespace fileserver
 		}
 
 		SILICIUM_DELETED_FUNCTION(linear_file(linear_file const &))
-		SILICIUM_DELETED_FUNCTION(linear_file &operator = (linear_file const &))
+		SILICIUM_DELETED_FUNCTION(linear_file &operator=(linear_file const &))
 #endif
 	};
 }

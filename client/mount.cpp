@@ -21,7 +21,7 @@
 #include <boost/utility/in_place_factory.hpp>
 
 #ifdef __linux__
-#	include <fuse.h>
+#include <fuse.h>
 #endif
 
 namespace fileserver
@@ -41,8 +41,7 @@ namespace fileserver
 		{
 			unknown_digest root;
 			boost::asio::ip::tcp::endpoint server;
-		}
-		g_config;
+		} g_config;
 
 #ifdef __linux__
 		void *init(struct fuse_conn_info *conn)
@@ -54,20 +53,20 @@ namespace fileserver
 			fs->keep_running = boost::in_place(boost::ref(fs->io));
 			auto &io = fs->io;
 			fs->worker = std::async(std::launch::async, [&io]()
-			{
-				for (;;)
-				{
-					try
-					{
-						io.run();
-						break;
-					}
-					catch (...)
-					{
-						continue;
-					}
-				}
-			});
+			                        {
+				                        for (;;)
+				                        {
+					                        try
+					                        {
+						                        io.run();
+						                        break;
+					                        }
+					                        catch (...)
+					                        {
+						                        continue;
+					                        }
+				                        }
+				                    });
 			fs->root = g_config.root;
 			return fs.release();
 		}
@@ -82,10 +81,10 @@ namespace fileserver
 			Si::error_or<linear_file> file;
 			Si::detail::event<Si::std_threading> waiting;
 			waiting.block(Si::transform(service.open(name), [&file](Si::error_or<linear_file> opened_file)
-			{
-				file = std::move(opened_file);
-				return Si::nothing();
-			}));
+			                            {
+				                            file = std::move(opened_file);
+				                            return Si::nothing();
+				                        }));
 			return file;
 		}
 
@@ -97,7 +96,8 @@ namespace fileserver
 				SILICIUM_UNREACHABLE();
 			}
 
-			virtual void get_one(Si::observable<Si::nothing, Si::ptr_observer<Si::observer<Si::nothing>>> &target) SILICIUM_OVERRIDE
+			virtual void
+			get_one(Si::observable<Si::nothing, Si::ptr_observer<Si::observer<Si::nothing>>> &target) SILICIUM_OVERRIDE
 			{
 				Si::detail::event<Si::std_threading> waiting;
 				waiting.block(Si::ref(target));
@@ -113,7 +113,8 @@ namespace fileserver
 			return deserialize_json(std::move(content_source));
 		}
 
-		boost::optional<typed_reference> resolve_path(std::vector<std::string> const &path_components, digest const &root, storage_reader &service)
+		boost::optional<typed_reference> resolve_path(std::vector<std::string> const &path_components,
+		                                              digest const &root, storage_reader &service)
 		{
 			content_type last_type = json_listing_content_type;
 			digest last_digest = root;
@@ -126,22 +127,22 @@ namespace fileserver
 				}
 				auto parsed = parse_directory_listing(std::move(file).get());
 				if (!Si::visit<bool>(
-					parsed,
-					[&last_digest, &last_type, component](std::unique_ptr<directory_listing> const &listing)
-				{
-					auto found = listing->entries.find(*component);
-					if (found == listing->entries.end())
-					{
-						return false;
-					}
-					last_type = found->second.type;
-					last_digest = found->second.referenced;
-					return true;
-				},
-					[](std::size_t)
-				{
-					return false;
-				}))
+				        parsed,
+				        [&last_digest, &last_type, component](std::unique_ptr<directory_listing> const &listing)
+				        {
+					        auto found = listing->entries.find(*component);
+					        if (found == listing->entries.end())
+					        {
+						        return false;
+					        }
+					        last_type = found->second.type;
+					        last_digest = found->second.referenced;
+					        return true;
+					    },
+				        [](std::size_t)
+				        {
+					        return false;
+					    }))
 				{
 					return boost::none;
 				}
@@ -152,8 +153,12 @@ namespace fileserver
 		std::vector<std::string> split_path(char const *path)
 		{
 			std::vector<std::string> path_components;
-			boost::algorithm::split(path_components, path, [](char c) { return c == '/'; });
-			path_components.erase(std::remove(path_components.begin(), path_components.end(), std::string()), path_components.end());
+			boost::algorithm::split(path_components, path, [](char c)
+			                        {
+				                        return c == '/';
+				                    });
+			path_components.erase(std::remove(path_components.begin(), path_components.end(), std::string()),
+			                      path_components.end());
 			return path_components;
 		}
 
@@ -188,7 +193,7 @@ namespace fileserver
 		int getattr(const char *path, struct stat *stbuf)
 		{
 			memset(stbuf, 0, sizeof(*stbuf));
-			file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+			file_system *const fs = static_cast<file_system *>(fuse_get_context()->private_data);
 			auto const file_info = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
 			if (!file_info)
 			{
@@ -201,18 +206,13 @@ namespace fileserver
 			return -ENOENT;
 		}
 
-		int readdir(
-			const char *path,
-			void *buf,
-			fuse_fill_dir_t filler,
-			off_t offset,
-			struct fuse_file_info *fi)
+		int readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 		{
 			boost::ignore_unused_variable_warning(offset);
 			boost::ignore_unused_variable_warning(fi);
 			try
 			{
-				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+				file_system *const fs = static_cast<file_system *>(fuse_get_context()->private_data);
 				auto const resolved = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
 				if (!resolved)
 				{
@@ -226,26 +226,27 @@ namespace fileserver
 				}
 
 				auto parsed = parse_directory_listing(std::move(file).get());
-				return Si::visit<int>(
-					parsed,
-					[buf, filler, fs](std::unique_ptr<directory_listing> &listing)
-				{
-					filler(buf, ".", NULL, 0);
-					filler(buf, "..", NULL, 0);
-					for (auto const &entry : listing->entries)
-					{
-						struct stat s{};
-						if (fill_stat(entry.second, s, *fs->backend))
-						{
-							filler(buf, entry.first.c_str(), &s, 0);
-						}
-					}
-					return 0;
-				},
-					[](std::size_t)
-				{
-					return -ENOENT;
-				});
+				return Si::visit<int>(parsed,
+				                      [buf, filler, fs](std::unique_ptr<directory_listing> &listing)
+				                      {
+					                      filler(buf, ".", NULL, 0);
+					                      filler(buf, "..", NULL, 0);
+					                      for (auto const &entry : listing->entries)
+					                      {
+						                      struct stat s
+						                      {
+						                      };
+						                      if (fill_stat(entry.second, s, *fs->backend))
+						                      {
+							                      filler(buf, entry.first.c_str(), &s, 0);
+						                      }
+					                      }
+					                      return 0;
+					                  },
+				                      [](std::size_t)
+				                      {
+					                      return -ENOENT;
+					                  });
 			}
 			catch (std::exception const &e)
 			{
@@ -261,21 +262,21 @@ namespace fileserver
 			file_offset already_read = 0;
 
 			explicit open_file(linear_file source)
-				: source(std::move(source))
+			    : source(std::move(source))
 			{
 			}
 		};
 
 		int open(const char *path, struct fuse_file_info *fi)
 		{
-			if ((fi->flags & 3) != O_RDONLY) //the files are currently read-only
+			if ((fi->flags & 3) != O_RDONLY) // the files are currently read-only
 			{
 				return -EACCES;
 			}
 
 			try
 			{
-				file_system * const fs = static_cast<file_system *>(fuse_get_context()->private_data);
+				file_system *const fs = static_cast<file_system *>(fuse_get_context()->private_data);
 				auto const resolved = resolve_path(split_path(path), *to_sha256_digest(fs->root), *fs->backend);
 				if (!resolved)
 				{
@@ -308,15 +309,10 @@ namespace fileserver
 		{
 			boost::ignore_unused_variable_warning(path);
 			std::unique_ptr<open_file>(reinterpret_cast<open_file *>(fi->fh));
-			return 0; //ignored by FUSE
+			return 0; // ignored by FUSE
 		}
 
-		int read(
-			const char *path,
-			char *buf,
-			size_t size,
-			off_t offset,
-			struct fuse_file_info *fi)
+		int read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 		{
 			boost::ignore_unused_variable_warning(path);
 			open_file &file = *reinterpret_cast<open_file *>(fi->fh);
@@ -334,7 +330,8 @@ namespace fileserver
 				{
 					return -EIO;
 				}
-				int const reading = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, (*piece).get().size())));
+				int const reading = static_cast<int>(std::min<std::ptrdiff_t>(
+				    std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, (*piece).get().size())));
 				std::copy((*piece).get().begin(), (*piece).get().begin() + reading, buf);
 				file.already_read += reading;
 				file.buffer.assign((*piece).get().begin() + reading, (*piece).get().end());
@@ -342,7 +339,8 @@ namespace fileserver
 			}
 			else
 			{
-				int const copied = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, file.buffer.size())));
+				int const copied = static_cast<int>(std::min<std::ptrdiff_t>(
+				    std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, file.buffer.size())));
 				std::copy(file.buffer.begin(), file.buffer.begin() + copied, buf);
 				file.already_read += copied;
 				file.buffer.erase(file.buffer.begin(), file.buffer.begin() + copied);
@@ -352,7 +350,6 @@ namespace fileserver
 
 		struct user_data_for_fuse
 		{
-
 		};
 
 		struct chan_deleter
@@ -375,13 +372,15 @@ namespace fileserver
 #endif
 	}
 
-	void mount_directory(unknown_digest const &root_digest, fileserver::path const &mount_point, boost::asio::ip::tcp::endpoint const &server)
+	void mount_directory(unknown_digest const &root_digest, fileserver::path const &mount_point,
+	                     boost::asio::ip::tcp::endpoint const &server)
 	{
 #ifdef __linux__
 		chan_deleter deleter;
 		deleter.mount_point = mount_point;
 
-		//remove an existing mount because FUSE did not do that if the previous process was killed
+		// remove an existing mount because FUSE did not do that if the previous
+		// process was killed
 		fuse_unmount(mount_point.c_str(), nullptr);
 
 		fuse_args args{};
@@ -401,13 +400,14 @@ namespace fileserver
 		g_config.root = root_digest;
 		g_config.server = server;
 		user_data_for_fuse user_data;
-		std::unique_ptr<fuse, fuse_deleter> const f(fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
+		std::unique_ptr<fuse, fuse_deleter> const f(
+		    fuse_new(chan.get(), &args, &operations, sizeof(operations), &user_data));
 		if (!f)
 		{
 			throw std::runtime_error("fuse_new failure");
 		}
 
-		//fuse_new seems to take ownership of the fuse_chan
+		// fuse_new seems to take ownership of the fuse_chan
 		chan.release();
 
 		fuse_loop(f.get());

@@ -1,6 +1,6 @@
 #ifdef _MSC_VER
-//fixes "fatal error C1189: #error :  WinSock.h has already been included"
-#	include <boost/asio.hpp>
+// fixes "fatal error C1189: #error :  WinSock.h has already been included"
+#include <boost/asio.hpp>
 #endif
 #include <server/scan_directory.hpp>
 #include <server/directory_listing.hpp>
@@ -107,7 +107,8 @@ namespace fileserver
 
 		if (boost::range::equal(parsed_path->path.front(), Si::make_c_str_range("browse")))
 		{
-			Si::optional<any_reference> ref = parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
+			Si::optional<any_reference> ref =
+			    parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
 			if (!ref)
 			{
 				return Si::none;
@@ -117,7 +118,8 @@ namespace fileserver
 
 		if (boost::range::equal(parsed_path->path.front(), Si::make_c_str_range("get")))
 		{
-			Si::optional<any_reference> ref = parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
+			Si::optional<any_reference> ref =
+			    parse_any_reference(Si::make_iterator_range(parsed_path->path.begin() + 1, parsed_path->path.end()));
 			if (!ref)
 			{
 				return Si::none;
@@ -167,16 +169,12 @@ namespace fileserver
 	}
 
 	template <class YieldContext, class MakeSender>
-	void respond(
-		YieldContext &yield,
-		MakeSender const &make_sender,
-		Si::http::request const &header,
-		file_repository const &repository,
-		digest const &root)
+	void respond(YieldContext &yield, MakeSender const &make_sender, Si::http::request const &header,
+	             file_repository const &repository, digest const &root)
 	{
 		auto const try_send = [&yield, &make_sender](std::vector<char> const &data)
 		{
-			char const * const begin = data.data();
+			char const *const begin = data.data();
 			auto sender = make_sender(Si::make_memory_range(begin, begin + data.size()));
 			auto result = yield.get_one(sender);
 			assert(result);
@@ -190,22 +188,26 @@ namespace fileserver
 			return;
 		}
 
-		std::vector<location> const * const found_file_locations = repository.find_location(
-			Si::visit<unknown_digest>(
-				Si::visit<any_reference const &>(
-					*request,
-					[](get_request const &request) -> any_reference const & { return request.what; },
-					[](browse_request const &request) -> any_reference const & { return request.what; }
-				),
-				[](unknown_digest const &digest) { return digest; },
-				[&root](Si::noexcept_string const &name)
-				{
-					//TODO: resolve the name
-					boost::ignore_unused_variable_warning(name);
-					return to_unknown_digest(root);
-				}
-			)
-		);
+		std::vector<location> const *const found_file_locations = repository.find_location(Si::visit<unknown_digest>(
+		    Si::visit<any_reference const &>(*request,
+		                                     [](get_request const &request) -> any_reference const &
+		                                     {
+			                                     return request.what;
+			                                 },
+		                                     [](browse_request const &request) -> any_reference const &
+		                                     {
+			                                     return request.what;
+			                                 }),
+		    [](unknown_digest const &digest)
+		    {
+			    return digest;
+			},
+		    [&root](Si::noexcept_string const &name)
+		    {
+			    // TODO: resolve the name
+			    boost::ignore_unused_variable_warning(name);
+			    return to_unknown_digest(root);
+			}));
 		if (!found_file_locations)
 		{
 			try_send(serialize_response(make_not_found_response()));
@@ -213,7 +215,7 @@ namespace fileserver
 		}
 		assert(!found_file_locations->empty());
 
-		//just try the first entry for now
+		// just try the first entry for now
 		auto &found_file = (*found_file_locations)[0];
 
 		{
@@ -222,7 +224,8 @@ namespace fileserver
 			response.http_version = "HTTP/1.0";
 			response.status_text = "OK";
 			response.status = 200;
-			(*response.arguments)["Content-Length"] = boost::lexical_cast<Si::noexcept_string>(location_file_size(found_file));
+			(*response.arguments)["Content-Length"] =
+			    boost::lexical_cast<Si::noexcept_string>(location_file_size(found_file));
 			(*response.arguments)["Connection"] = "close";
 
 			std::vector<char> response_header = serialize_response(response);
@@ -235,70 +238,75 @@ namespace fileserver
 		switch (determine_request_type(header.method))
 		{
 		case request_type::get:
-			{
-				Si::visit<void>(
-					*request,
-					[&try_send, &found_file, &yield](get_request const &)
-					{
-						auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>([&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
-						{
-							yield(Si::visit<std::vector<char>>(
-								found_file,
-								[](file_system_location const &location)
-								{
-									  std::vector<char> content;
-									  Si::file_handle file = ventura::open_read_write(location.where.safe_c_str()).move_value();
-									  boost::uint64_t size = ventura::file_size(file.handle).get().or_throw([&location]{ throw std::runtime_error("Expected file " + to_utf8_string(location.where) + " to have a size"); });
-									  content.resize(size);
-									  if (Si::read(file.handle, Si::make_memory_range(content)).get() != size)
-									  {
-										throw std::runtime_error(boost::str(boost::format("Could not read %1% bytes from file %2%") % size % location.where));
-									  }
-									  return content;
-								},
-								[](in_memory_location const &location)
-								{
-									return location.content;
-								}
-							));
-							return {};
-						});
-						auto const &body = yield.get_one(Si::ref(reading));
-						if (!body)
-						{
-							return;
-						}
+		{
+			Si::visit<void>(
+			    *request,
+			    [&try_send, &found_file, &yield](get_request const &)
+			    {
+				    auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>(
+				        [&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
+				        {
+					        yield(Si::visit<std::vector<char>>(
+					            found_file,
+					            [](file_system_location const &location)
+					            {
+						            std::vector<char> content;
+						            Si::file_handle file =
+						                ventura::open_read_write(location.where.safe_c_str()).move_value();
+						            boost::uint64_t size =
+						                ventura::file_size(file.handle)
+						                    .get()
+						                    .or_throw([&location]
+						                              {
+							                              throw std::runtime_error("Expected file " +
+							                                                       to_utf8_string(location.where) +
+							                                                       " to have a size");
+							                          });
+						            content.resize(size);
+						            if (Si::read(file.handle, Si::make_memory_range(content)).get() != size)
+						            {
+							            throw std::runtime_error(
+							                boost::str(boost::format("Could not read %1% bytes from file %2%") % size %
+							                           location.where));
+						            }
+						            return content;
+						        },
+					            [](in_memory_location const &location)
+					            {
+						            return location.content;
+						        }));
+					        return {};
+					    });
+				    auto const &body = yield.get_one(Si::ref(reading));
+				    if (!body)
+				    {
+					    return;
+				    }
 
-						if (body->size() != location_file_size(found_file))
-						{
-							return;
-						}
+				    if (body->size() != location_file_size(found_file))
+				    {
+					    return;
+				    }
 
-						try_send(*body);
-					},
-					[](browse_request const &)
-					{
-						//TODO
-					}
-				);
-				break;
-			}
+				    try_send(*body);
+				},
+			    [](browse_request const &)
+			    {
+				    // TODO
+				});
+			break;
+		}
 
 		case request_type::head:
-			{
-				break;
-			}
+		{
+			break;
+		}
 		}
 	}
 
 	template <class YieldContext, class ReceiveObservable, class MakeSender, class Shutdown>
-	void serve_client(
-		YieldContext &yield,
-		ReceiveObservable &receive,
-		MakeSender const &make_sender,
-		Shutdown const &shutdown,
-		file_repository const &repository,
-		digest const &root)
+	void serve_client(YieldContext &yield, ReceiveObservable &receive, MakeSender const &make_sender,
+	                  Shutdown const &shutdown, file_repository const &repository, digest const &root)
 	{
 		auto receive_sync = Si::virtualize_source(Si::make_observable_source(Si::ref(receive), yield));
 		Si::received_from_socket_source receive_bytes(receive_sync);
@@ -316,7 +324,7 @@ namespace fileserver
 		}
 	}
 
-	//TODO: use unique_observable
+	// TODO: use unique_observable
 	using session_handle = Si::shared_observable<Si::nothing>;
 
 	std::pair<std::vector<char>, content_type> directory_listing_to_json_bytes(directory_listing const &listing)
@@ -329,10 +337,12 @@ namespace fileserver
 	void serve_directory(boost::filesystem::path const &served_dir)
 	{
 		boost::asio::io_service io;
-		boost::asio::ip::tcp::acceptor acceptor(io, boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
+		boost::asio::ip::tcp::acceptor acceptor(io,
+		                                        boost::asio::ip::tcp::endpoint(boost::asio::ip::address_v4(), 8080));
 		auto clients = Si::asio::make_tcp_acceptor(&acceptor);
 
-		std::pair<file_repository, typed_reference> const scanned = scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
+		std::pair<file_repository, typed_reference> const scanned =
+		    scan_directory(served_dir, directory_listing_to_json_bytes, detail::hash_file);
 		std::cerr << "Scan complete. Tree hash value ";
 		typed_reference const &root = scanned.second;
 		print(std::cerr, root);
@@ -340,51 +350,61 @@ namespace fileserver
 		file_repository const &files = scanned.first;
 		digest const &root_digest = root.referenced;
 
-		Si::spawn_coroutine([&clients, &files, &root_digest](Si::spawn_context &yield)
-		{
-			for (;;)
-			{
-				auto accepted = yield.get_one(Si::ref(clients));
-				if (!accepted)
-				{
-					return;
-				}
-				std::shared_ptr<boost::asio::ip::tcp::socket> socket = accepted->get(); //TODO handle error
-				auto prepare_socket = [socket, &files, &root_digest](Si::spawn_context &yield)
-				{
-					std::array<char, 1024> receive_buffer;
-					auto received = Si::asio::make_reading_observable(*socket, Si::make_iterator_range(receive_buffer.data(), receive_buffer.data() + receive_buffer.size()));
-					auto make_sender = [socket](Si::memory_range sent)
-					{
-						auto sender = Si::asio::make_writing_observable(*socket);
-						sender.set_buffer(sent);
-						return sender;
+		Si::spawn_coroutine(
+		    [&clients, &files, &root_digest](Si::spawn_context &yield)
+		    {
+			    for (;;)
+			    {
+				    auto accepted = yield.get_one(Si::ref(clients));
+				    if (!accepted)
+				    {
+					    return;
+				    }
+				    std::shared_ptr<boost::asio::ip::tcp::socket> socket = accepted->get(); // TODO handle error
+				    auto prepare_socket = [socket, &files, &root_digest](Si::spawn_context &yield)
+				    {
+					    std::array<char, 1024> receive_buffer;
+					    auto received = Si::asio::make_reading_observable(
+					        *socket, Si::make_iterator_range(receive_buffer.data(),
+					                                         receive_buffer.data() + receive_buffer.size()));
+					    auto make_sender = [socket](Si::memory_range sent)
+					    {
+						    auto sender = Si::asio::make_writing_observable(*socket);
+						    sender.set_buffer(sent);
+						    return sender;
+						};
+					    auto shutdown = [socket]()
+					    {
+						    boost::system::error_code ec; // ignored
+						    socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+						};
+					    serve_client(yield, received, make_sender, shutdown, files, root_digest);
 					};
-					auto shutdown = [socket]()
-					{
-						boost::system::error_code ec; //ignored
-						socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-					};
-					serve_client(yield, received, make_sender, shutdown, files, root_digest);
-				};
-				Si::spawn_coroutine(prepare_socket);
-			}
-		});
+				    Si::spawn_coroutine(prepare_socket);
+			    }
+			});
 
 		io.run();
 	}
-	
+
 	char const *notification_type_name(ventura::file_notification_type type)
 	{
 		switch (type)
 		{
-		case ventura::file_notification_type::add: return "add";
-		case ventura::file_notification_type::change_content: return "change_content";
-		case ventura::file_notification_type::change_content_or_metadata: return "change_content_or_metadata";
-		case ventura::file_notification_type::change_metadata: return "change_metadata";
-		case ventura::file_notification_type::move_self: return "move_self";
-		case ventura::file_notification_type::remove: return "remove";
-		case ventura::file_notification_type::remove_self: return "remove_self";
+		case ventura::file_notification_type::add:
+			return "add";
+		case ventura::file_notification_type::change_content:
+			return "change_content";
+		case ventura::file_notification_type::change_content_or_metadata:
+			return "change_content_or_metadata";
+		case ventura::file_notification_type::change_metadata:
+			return "change_metadata";
+		case ventura::file_notification_type::move_self:
+			return "move_self";
+		case ventura::file_notification_type::remove:
+			return "remove";
+		case ventura::file_notification_type::remove_self:
+			return "remove_self";
 		}
 		SILICIUM_UNREACHABLE();
 	}
@@ -394,23 +414,24 @@ namespace fileserver
 		boost::asio::io_service io;
 		ventura::single_directory_watcher watcher(io, watched_dir);
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
-		{
-			auto events = Si::make_observable_source(Si::ref(watcher), yield);
-			for (;;)
-			{
-				Si::optional<Si::error_or<ventura::file_notification>> event = Si::get(events);
-				if (!event)
-				{
-					break;
-				}
-				if (event->is_error())
-				{
-					std::cerr << event->error() << '\n';
-					break;
-				}
-				std::cerr << notification_type_name(event->get().type) << " " << event->get().name << '\n';
-			}
-		});
+		                    {
+			                    auto events = Si::make_observable_source(Si::ref(watcher), yield);
+			                    for (;;)
+			                    {
+				                    Si::optional<Si::error_or<ventura::file_notification>> event = Si::get(events);
+				                    if (!event)
+				                    {
+					                    break;
+				                    }
+				                    if (event->is_error())
+				                    {
+					                    std::cerr << event->error() << '\n';
+					                    break;
+				                    }
+				                    std::cerr << notification_type_name(event->get().type) << " " << event->get().name
+				                              << '\n';
+			                    }
+			                });
 		io.run();
 	}
 
@@ -419,34 +440,36 @@ namespace fileserver
 		boost::asio::io_service io;
 		fileserver::recursive_directory_watcher watcher(io, watched_dir);
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
-		{
-			boost::uintmax_t event_count = 0;
-			auto event_reader = Si::make_observable_source(Si::ref(watcher), yield);
-			for (;;)
-			{
-				Si::optional<Si::error_or<std::vector<ventura::file_notification>>> events = Si::get(event_reader);
-				if (!events)
-				{
-					break;
-				}
-				if (events->is_error())
-				{
-					std::cerr << events->error() << '\n';
-					break;
-				}
-				auto const &notifications = events->get();
-				for (ventura::file_notification const &notification : notifications)
-				{
-					++event_count;
-					std::cerr << event_count << " " << notification_type_name(notification.type) << " " << notification.name;
-					if (notification.is_directory)
-					{
-						std::cerr << '/';
-					}
-					std::cerr << '\n';
-				}
-			}
-		});
+		                    {
+			                    boost::uintmax_t event_count = 0;
+			                    auto event_reader = Si::make_observable_source(Si::ref(watcher), yield);
+			                    for (;;)
+			                    {
+				                    Si::optional<Si::error_or<std::vector<ventura::file_notification>>> events =
+				                        Si::get(event_reader);
+				                    if (!events)
+				                    {
+					                    break;
+				                    }
+				                    if (events->is_error())
+				                    {
+					                    std::cerr << events->error() << '\n';
+					                    break;
+				                    }
+				                    auto const &notifications = events->get();
+				                    for (ventura::file_notification const &notification : notifications)
+				                    {
+					                    ++event_count;
+					                    std::cerr << event_count << " " << notification_type_name(notification.type)
+					                              << " " << notification.name;
+					                    if (notification.is_directory)
+					                    {
+						                    std::cerr << '/';
+					                    }
+					                    std::cerr << '\n';
+				                    }
+			                    }
+			                });
 		io.run();
 	}
 }
@@ -457,11 +480,9 @@ int main(int argc, char **argv)
 	boost::filesystem::path where = boost::filesystem::current_path();
 
 	boost::program_options::options_description desc("Allowed options");
-	desc.add_options()
-	    ("help", "produce help message")
-		("verb", boost::program_options::value(&verb), "what to do (serve)")
-		("where", boost::program_options::value(&where), "which filesystem directory to use")
-	;
+	desc.add_options()("help", "produce help message")("verb", boost::program_options::value(&verb),
+	                                                   "what to do (serve)")(
+	    "where", boost::program_options::value(&where), "which filesystem directory to use");
 
 	boost::program_options::positional_options_description positional;
 	positional.add("verb", 1);
@@ -469,13 +490,12 @@ int main(int argc, char **argv)
 	boost::program_options::variables_map vm;
 	try
 	{
-		boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
+		boost::program_options::store(
+		    boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
 	}
 	catch (boost::program_options::error const &ex)
 	{
-		std::cerr
-			<< ex.what() << '\n'
-			<< desc << "\n";
+		std::cerr << ex.what() << '\n' << desc << "\n";
 		return 1;
 	}
 
@@ -483,8 +503,8 @@ int main(int argc, char **argv)
 
 	if (vm.count("help"))
 	{
-	    std::cerr << desc << "\n";
-	    return 1;
+		std::cerr << desc << "\n";
+		return 1;
 	}
 
 	auto watched = ventura::absolute_path::create(where);
@@ -511,9 +531,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		std::cerr
-			<< "Unknown verb\n"
-			<< desc << "\n";
-	    return 1;
+		std::cerr << "Unknown verb\n" << desc << "\n";
+		return 1;
 	}
 }
