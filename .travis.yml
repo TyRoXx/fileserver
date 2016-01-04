@@ -12,6 +12,8 @@ addons:
     sources:
     - boost-latest
     - ubuntu-toolchain-r-test
+    - liburiparser-dev
+    - libfuse-dev
     packages:
     - g++-5
     - g++-4.9
