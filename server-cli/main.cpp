@@ -19,13 +19,13 @@
 #include <silicium/observable/for_each.hpp>
 #include <silicium/optional.hpp>
 #include <silicium/observable/thread.hpp>
-#include <silicium/source/file_source.hpp>
+#include <ventura/source/file_source.hpp>
 #include <silicium/http/http.hpp>
 #include <silicium/http/uri.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/observable/thread_generator.hpp>
 #include <silicium/source/buffering_source.hpp>
-#include <silicium/open.hpp>
+#include <ventura/open.hpp>
 #include <silicium/read_file.hpp>
 #include <silicium/source/memory_source.hpp>
 #include <silicium/std_threading.hpp>
@@ -34,7 +34,7 @@
 #include <silicium/observable/end.hpp>
 #include <silicium/source/single_source.hpp>
 #include <silicium/sink/iterator_sink.hpp>
-#include <silicium/single_directory_watcher.hpp>
+#include <ventura/single_directory_watcher.hpp>
 #include <silicium/source/observable_source.hpp>
 #include <boost/interprocess/sync/null_mutex.hpp>
 #include <boost/unordered_map.hpp>
@@ -42,13 +42,15 @@
 #include <boost/program_options.hpp>
 #include <boost/container/vector.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <ventura/file_operations.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/format.hpp>
 
 namespace fileserver
 {
 	using response_part = Si::memory_range;
 
-	typedef Si::fast_variant<unknown_digest, Si::noexcept_string> any_reference;
+	typedef Si::variant<unknown_digest, Si::noexcept_string> any_reference;
 
 	struct get_request
 	{
@@ -60,7 +62,7 @@ namespace fileserver
 		any_reference what;
 	};
 
-	typedef Si::fast_variant<browse_request, get_request> parsed_request;
+	typedef Si::variant<browse_request, get_request> parsed_request;
 
 	template <class PathElementRange>
 	Si::optional<any_reference> parse_any_reference(PathElementRange const &path)
@@ -97,7 +99,7 @@ namespace fileserver
 
 	Si::optional<parsed_request> parse_request_path(Si::memory_range const &path)
 	{
-		boost::optional<Si::http::uri> const parsed_path = Si::http::parse_uri(path);
+		Si::optional<Si::http::uri> const parsed_path = Si::http::parse_uri(path);
 		if (!parsed_path || parsed_path->path.empty())
 		{
 			return Si::none;
@@ -244,7 +246,15 @@ namespace fileserver
 								found_file,
 								[](file_system_location const &location)
 								{
-									return Si::read_file(location.where.to_boost_path());
+									  std::vector<char> content;
+									  Si::file_handle file = ventura::open_read_write(location.where.safe_c_str()).move_value();
+									  boost::uint64_t size = ventura::file_size(file.handle).get().or_throw([&location]{ throw std::runtime_error("Expected file " + to_utf8_string(location.where) + " to have a size"); });
+									  content.resize(size);
+									  if (Si::read(file.handle, Si::make_memory_range(content)).get() != size)
+									  {
+										throw std::runtime_error(boost::str(boost::format("Could not read %1% bytes from file %2%") % size % location.where));
+									  }
+									  return content;
 								},
 								[](in_memory_location const &location)
 								{
@@ -364,42 +374,47 @@ namespace fileserver
 		io.run();
 	}
 	
-	char const *notification_type_name(Si::file_notification_type type)
+	char const *notification_type_name(ventura::file_notification_type type)
 	{
 		switch (type)
 		{
-		case Si::file_notification_type::add: return "add";
-		case Si::file_notification_type::change_content: return "change_content";
-		case Si::file_notification_type::change_content_or_metadata: return "change_content_or_metadata";
-		case Si::file_notification_type::change_metadata: return "change_metadata";
-		case Si::file_notification_type::move_self: return "move_self";
-		case Si::file_notification_type::remove: return "remove";
-		case Si::file_notification_type::remove_self: return "remove_self";
+		case ventura::file_notification_type::add: return "add";
+		case ventura::file_notification_type::change_content: return "change_content";
+		case ventura::file_notification_type::change_content_or_metadata: return "change_content_or_metadata";
+		case ventura::file_notification_type::change_metadata: return "change_metadata";
+		case ventura::file_notification_type::move_self: return "move_self";
+		case ventura::file_notification_type::remove: return "remove";
+		case ventura::file_notification_type::remove_self: return "remove_self";
 		}
 		SILICIUM_UNREACHABLE();
 	}
 
-	void watch_directory(Si::absolute_path const &watched_dir)
+	void watch_directory(ventura::absolute_path const &watched_dir)
 	{
 		boost::asio::io_service io;
-		Si::single_directory_watcher watcher(io, watched_dir);
+		ventura::single_directory_watcher watcher(io, watched_dir);
 		Si::spawn_coroutine([&watcher](Si::spawn_context yield)
 		{
 			auto events = Si::make_observable_source(Si::ref(watcher), yield);
 			for (;;)
 			{
-				Si::optional<Si::file_notification> event = Si::get(events);
+				Si::optional<Si::error_or<ventura::file_notification>> event = Si::get(events);
 				if (!event)
 				{
 					break;
 				}
-				std::cerr << notification_type_name(event->type) << " " << event->name << '\n';
+				if (event->is_error())
+				{
+					std::cerr << event->error() << '\n';
+					break;
+				}
+				std::cerr << notification_type_name(event->get().type) << " " << event->get().name << '\n';
 			}
 		});
 		io.run();
 	}
 
-	void watch_directory_recursively(Si::absolute_path const &watched_dir)
+	void watch_directory_recursively(ventura::absolute_path const &watched_dir)
 	{
 		boost::asio::io_service io;
 		fileserver::recursive_directory_watcher watcher(io, watched_dir);
@@ -409,7 +424,7 @@ namespace fileserver
 			auto event_reader = Si::make_observable_source(Si::ref(watcher), yield);
 			for (;;)
 			{
-				Si::optional<Si::error_or<std::vector<Si::file_notification>>> events = Si::get(event_reader);
+				Si::optional<Si::error_or<std::vector<ventura::file_notification>>> events = Si::get(event_reader);
 				if (!events)
 				{
 					break;
@@ -420,7 +435,7 @@ namespace fileserver
 					break;
 				}
 				auto const &notifications = events->get();
-				for (Si::file_notification const &notification : notifications)
+				for (ventura::file_notification const &notification : notifications)
 				{
 					++event_count;
 					std::cerr << event_count << " " << notification_type_name(notification.type) << " " << notification.name;
@@ -472,10 +487,10 @@ int main(int argc, char **argv)
 	    return 1;
 	}
 
-	auto watched = Si::absolute_path::create(where);
+	auto watched = ventura::absolute_path::create(where);
 	if (!watched)
 	{
-		watched = Si::get_current_working_directory() / Si::relative_path(where);
+		watched = ventura::get_current_working_directory(Si::throw_) / ventura::relative_path(where);
 		assert(watched);
 	}
 

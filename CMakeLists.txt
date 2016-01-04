@@ -55,6 +55,9 @@ find_package(Silicium REQUIRED)
 
 include_directories(SYSTEM ${SILICIUM_INCLUDE_DIR})
 
+set(VENTURA_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/ventura" CACHE PATH "")
+include_directories(SYSTEM ${VENTURA_INCLUDE_DIR})
+
 find_package(UriParser REQUIRED)
 if(URIPARSER_FOUND)
 	include_directories(SYSTEM ${URIPARSER_INCLUDE_DIR})

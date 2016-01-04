@@ -3,7 +3,7 @@
 
 #include <server/sha256.hpp>
 #include <server/hexadecimal.hpp>
-#include <silicium/fast_variant.hpp>
+#include <silicium/variant.hpp>
 #include <boost/range/iterator_range.hpp>
 #ifndef _MSC_VER
 #	include <boost/container/string.hpp>
@@ -11,7 +11,7 @@
 
 namespace fileserver
 {
-	using digest = Si::fast_variant<sha256_digest>;
+	using digest = Si::variant<sha256_digest>;
 	using unknown_digest =
 #ifdef _MSC_VER
 		std::basic_string<byte>

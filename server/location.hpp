@@ -2,7 +2,7 @@
 #define FILESERVER_LOCATION_HPP
 
 #include <server/path.hpp>
-#include <silicium/fast_variant.hpp>
+#include <silicium/variant.hpp>
 
 namespace fileserver
 {
@@ -17,7 +17,7 @@ namespace fileserver
 		std::vector<char> content;
 	};
 
-	using location = Si::fast_variant<file_system_location, in_memory_location>;
+	using location = Si::variant<file_system_location, in_memory_location>;
 
 	boost::uint64_t location_file_size(location const &location)
 	{

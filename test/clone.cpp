@@ -101,10 +101,10 @@ namespace
 			auto it = files.find(name);
 			if (it == files.end())
 			{
-				return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(boost::system::error_code(fileserver::service_error::file_not_found))));
+				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(boost::system::error_code(fileserver::service_error::file_not_found))));
 			}
 			auto file = it->second;
-			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::linear_file>(
+			return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::linear_file>(
 				fileserver::linear_file{
 					static_cast<fileserver::file_offset>(file->size()),
 					Si::erase_unique(Si::take(Si::make_function_observable2([file]() -> Si::error_or<Si::memory_range>
@@ -120,9 +120,9 @@ namespace
 			auto it = files.find(name);
 			if (it == files.end())
 			{
-				return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::file_offset>(boost::system::error_code(fileserver::service_error::file_not_found))));
+				return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(boost::system::error_code(fileserver::service_error::file_not_found))));
 			}
-			return Si::erase_unique(Si::make_ready_future(Si::error_or<fileserver::file_offset>(it->second->size())));
+			return Si::erase_unique(Si::make_ready_future_observable(Si::error_or<fileserver::file_offset>(it->second->size())));
 		}
 	};
 }

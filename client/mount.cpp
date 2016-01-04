@@ -18,6 +18,7 @@
 #include <future>
 #include <boost/ref.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/utility/in_place_factory.hpp>
 
 #ifdef __linux__
 #	include <fuse.h>
@@ -333,10 +334,10 @@ namespace fileserver
 				{
 					return -EIO;
 				}
-				int const reading = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, (*piece)->size())));
-				std::copy((*piece)->begin(), (*piece)->begin() + reading, buf);
+				int const reading = static_cast<int>(std::min<std::ptrdiff_t>(std::numeric_limits<int>::max(), std::min<std::ptrdiff_t>(size, (*piece).get().size())));
+				std::copy((*piece).get().begin(), (*piece).get().begin() + reading, buf);
 				file.already_read += reading;
-				file.buffer.assign((*piece)->begin() + reading, (*piece)->end());
+				file.buffer.assign((*piece).get().begin() + reading, (*piece).get().end());
 				return reading;
 			}
 			else
@@ -374,11 +375,11 @@ namespace fileserver
 #endif
 	}
 
-	void mount_directory(unknown_digest const &root_digest, boost::filesystem::path const &mount_point, boost::asio::ip::tcp::endpoint const &server)
+	void mount_directory(unknown_digest const &root_digest, fileserver::path const &mount_point, boost::asio::ip::tcp::endpoint const &server)
 	{
 #ifdef __linux__
 		chan_deleter deleter;
-		deleter.mount_point = fileserver::path(mount_point);
+		deleter.mount_point = mount_point;
 
 		//remove an existing mount because FUSE did not do that if the previous process was killed
 		fuse_unmount(mount_point.c_str(), nullptr);

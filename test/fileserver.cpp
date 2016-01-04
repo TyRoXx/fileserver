@@ -22,7 +22,7 @@ BOOST_AUTO_TEST_CASE(directory_listing_json_v1_serialize_empty)
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_empty)
 {
 	auto source = Si::make_c_str_source("{}");
-	Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
+	Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
 	auto *listing = Si::try_get_ptr<std::unique_ptr<fileserver::directory_listing>>(parsed);
 	BOOST_REQUIRE(listing);
 	BOOST_REQUIRE(*listing);
@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(directory_listing_json_v1_serialize_unicode)
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_unicode)
 {
 	auto source = Si::make_container_source(a_json_directory_listing);
-	Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
+	Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
 	auto * const listing = Si::try_get_ptr<std::unique_ptr<fileserver::directory_listing>>(parsed);
 	BOOST_REQUIRE(listing);
 	BOOST_REQUIRE(*listing);
@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_unicode)
 BOOST_AUTO_TEST_CASE(directory_listing_json_v1_deserialize_error)
 {
 	auto source = Si::make_c_str_source("{ ? }");
-	Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
+	Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> const parsed = fileserver::deserialize_json(source);
 	BOOST_CHECK_EQUAL(2U,
 		Si::visit<std::size_t>(parsed,
 			[](std::unique_ptr<fileserver::directory_listing> const &) -> std::size_t

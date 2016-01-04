@@ -6,36 +6,36 @@
 #include <server/directory_listing.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/source/virtualized_source.hpp>
-#include <silicium/source/file_source.hpp>
+#include <ventura/source/file_source.hpp>
 #include <silicium/source/single_source.hpp>
 #include <silicium/source/transforming_source.hpp>
-#include <silicium/open.hpp>
-#include <silicium/file_size.hpp>
+#include <ventura/open.hpp>
+#include <ventura/file_size.hpp>
 #include <boost/filesystem/operations.hpp>
 
 namespace fileserver
 {
 	namespace detail
 	{
-		inline Si::error_or<std::pair<typed_reference, location>> hash_file(boost::filesystem::path const &file)
+		inline Si::error_or<std::pair<typed_reference, location>> hash_file(ventura::absolute_path const &file)
 		{
-			auto opening = Si::open_reading(file);
+			auto opening = ventura::open_reading(file.safe_c_str());
 			if (opening.is_error())
 			{
 				return opening.error();
 			}
 			auto &&opened = std::move(opening).get();
-			Si::optional<boost::uintmax_t> const size = Si::file_size(opened.handle).get();
+			Si::optional<boost::uintmax_t> const size = ventura::file_size(opened.handle).get();
 			if (!size)
 			{
 				//TODO: return a proper error_code for this problem
 				throw std::runtime_error("hash_file works only for regular files");
 			}
 			std::array<char, 8192> buffer;
-			auto content = Si::virtualize_source(Si::make_file_source(opened.handle, Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
+			auto content = Si::virtualize_source(ventura::make_file_source(opened.handle, Si::make_memory_range(buffer.data(), buffer.data() + buffer.size())));
 			auto hashable_content = Si::make_transforming_source(
 				content,
-				[&buffer](Si::file_read_result piece)
+				[&buffer](ventura::file_read_result piece)
 			{
 				assert(static_cast<size_t>(piece.get().size()) <= buffer.size());
 				return piece.get(); //may throw
@@ -48,7 +48,7 @@ namespace fileserver
 	inline std::pair<file_repository, typed_reference> scan_directory(
 		boost::filesystem::path const &root,
 		std::function<std::pair<std::vector<char>, content_type> (directory_listing const &)> const &serialize_listing,
-		std::function<Si::error_or<std::pair<typed_reference, location>> (boost::filesystem::path const &)> const &hash_file)
+		std::function<Si::error_or<std::pair<typed_reference, location>> (ventura::absolute_path const &)> const &hash_file)
 	{
 		file_repository repository;
 		directory_listing listing;
@@ -62,14 +62,14 @@ namespace fileserver
 			{
 			case boost::filesystem::regular_file:
 				{
-					auto /*non-const*/ hashed = hash_file(i->path());
+					auto /*non-const*/ hashed = hash_file(*ventura::absolute_path::create(i->path()));
 					if (hashed.is_error())
 					{
 						//ignore error for now
 						break;
 					}
-					repository.available[to_unknown_digest(hashed->first.referenced)].emplace_back(std::move(hashed->second));
-					add_to_listing(hashed->first);
+					repository.available[to_unknown_digest(hashed.get().first.referenced)].emplace_back(std::move(hashed.get().second));
+					add_to_listing(hashed.get().first);
 					break;
 				}
 

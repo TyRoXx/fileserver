@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 {
 	std::string verb;
 	std::string digest;
-	boost::filesystem::path mount_point;
+	boost::filesystem::path given_mount_point;
 	std::string host;
 
 	boost::program_options::options_description desc("Allowed options");
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 	    ("help", "produce help message")
 		("verb", boost::program_options::value(&verb), "what to do (get)")
 		("digest,d", boost::program_options::value(&digest), "the hash of the file to get/mount")
-		("mountpoint", boost::program_options::value(&mount_point), "a directory to mount at")
+		("mountpoint", boost::program_options::value(&given_mount_point), "an absolute directory to mount at")
 		("host", boost::program_options::value(&host), "the IP address of the server")
 	;
 
@@ -155,6 +155,16 @@ int main(int argc, char **argv)
 		}
 	}
 
+	auto const require_mount_point = [&given_mount_point]
+	{
+		Si::optional<ventura::absolute_path> mount_point = ventura::absolute_path::create(given_mount_point);
+		if (!mount_point)
+		{
+			std::cerr << "The mount point must be given as an absolute path currently\n";
+		}
+		return mount_point;
+	};
+
 	if (verb == "get")
 	{
 		auto requested = parse_digest();
@@ -171,7 +181,12 @@ int main(int argc, char **argv)
 		{
 			return 1;
 		}
-		fileserver::mount_directory(*requested, mount_point, server);
+		Si::optional<ventura::absolute_path> mount_point = require_mount_point();
+		if (!mount_point)
+		{
+			return 1;
+		}
+		fileserver::mount_directory(*requested, *mount_point, server);
 	}
 	else if (verb == "clone")
 	{
@@ -181,7 +196,12 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		int rc = 1;
-		fileserver::filesystem_directory_manipulator mount_point_manipulator(mount_point);
+		Si::optional<ventura::absolute_path> mount_point = require_mount_point();
+		if (!mount_point)
+		{
+			return 1;
+		}
+		fileserver::filesystem_directory_manipulator mount_point_manipulator(*mount_point);
 		boost::asio::io_service io;
 		fileserver::http_storage_reader service(io, server, "/");
 		auto all = Si::for_each(fileserver::clone_directory(*requested, mount_point_manipulator, service, io), [&rc](boost::system::error_code ec)

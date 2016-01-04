@@ -7,7 +7,7 @@
 #include <silicium/observable/ref.hpp>
 #include <silicium/observable/coroutine_generator.hpp>
 #include <silicium/observable/total_consumer.hpp>
-#include <silicium/open.hpp>
+#include <ventura/open.hpp>
 #include <silicium/source/observable_source.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
@@ -28,11 +28,11 @@ namespace fileserver
 				{
 					return received.error();
 				}
-				if (received->size() == 0)
+				if (received.get().size() == 0)
 				{
 					break;
 				}
-				if (static_cast<file_offset>(received->size()) > (copied_size - total_written))
+				if (static_cast<file_offset>(received.get().size()) > (copied_size - total_written))
 				{
 					throw std::logic_error("todo received too much");
 				}
@@ -41,7 +41,7 @@ namespace fileserver
 				{
 					return written;
 				}
-				total_written += received->size();
+				total_written += received.get().size();
 			}
 			return boost::system::error_code();
 		}
@@ -83,7 +83,7 @@ namespace fileserver
 			linear_file tree_file = std::move(maybe_tree_file.get());
 			auto receiving_source = Si::virtualize_source(Si::make_observable_source(Si::ref(tree_file.content), yield));
 			Si::received_from_socket_source content_source(receiving_source);
-			Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));
+			Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> parsed = deserialize_json(std::move(content_source));
 			return Si::visit<boost::system::error_code>(
 				parsed,
 				[&](std::unique_ptr<directory_listing> const &listing) -> boost::system::error_code

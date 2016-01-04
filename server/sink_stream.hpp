@@ -2,6 +2,7 @@
 #define FILESERVER_SINK_STREAM_HPP
 
 #include <silicium/sink/sink.hpp>
+#include <silicium/sink/append.hpp>
 #include <silicium/config.hpp>
 
 namespace fileserver

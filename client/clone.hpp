@@ -6,8 +6,9 @@
 #include <silicium/error_or.hpp>
 #include <silicium/file_handle.hpp>
 #include <silicium/observable/ptr.hpp>
-#include <silicium/open.hpp>
-#include <silicium/source/file_source.hpp>
+#include <ventura/open.hpp>
+#include <ventura/source/file_source.hpp>
+#include <ventura/file_operations.hpp>
 #include <silicium/to_shared.hpp>
 #include <silicium/to_unique.hpp>
 #include <silicium/source/transforming_source.hpp>
@@ -175,9 +176,20 @@ namespace fileserver
 			{
 				return ec;
 			}
-			return Si::to_unique(
+			return Si::error_or<
+					std::unique_ptr<
+						Si::source<
+							Si::error_or<
+								Si::memory_range
+							>
+						>
+					>
+				>(Si::to_unique(
+					  Si::Source<Si::error_or<
+					  Si::memory_range
+				  >>::erase(
 				Si::make_transforming_source(
-					Si::make_file_source(file->handle, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size())),
+					ventura::make_file_source(file->handle, Si::make_iterator_range(buffer.data(), buffer.data() + buffer.size())),
 					[this](Si::error_or<Si::memory_range> bytes_read)
 					{
 						return Si::map(bytes_read, [this](Si::memory_range bytes_read) -> Si::memory_range
@@ -186,7 +198,7 @@ namespace fileserver
 							return bytes_read;
 						});
 					})
-				);
+				)));
 		}
 
 	private:
@@ -197,26 +209,24 @@ namespace fileserver
 
 	struct filesystem_directory_manipulator : fileserver::directory_manipulator
 	{
-		explicit filesystem_directory_manipulator(boost::filesystem::path root)
+		explicit filesystem_directory_manipulator(ventura::absolute_path root)
 			: root(std::move(root))
 		{
 		}
 
 		virtual boost::system::error_code require_exists() SILICIUM_OVERRIDE
 		{
-			boost::system::error_code ec;
-			boost::filesystem::create_directories(root, ec);
-			return ec;
+			return ventura::create_directories(root, Si::return_);
 		}
 
 		virtual std::unique_ptr<directory_manipulator> edit_subdirectory(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::make_unique<filesystem_directory_manipulator>(root / name);
+			return Si::make_unique<filesystem_directory_manipulator>(root / ventura::relative_path(name));
 		}
 
 		virtual Si::error_or<std::unique_ptr<writeable_file>> create_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			auto opened = Si::create_file(root / name);
+			auto opened = ventura::create_file(root / ventura::relative_path(name));
 			if (opened.is_error())
 			{
 				return opened.error();
@@ -226,7 +236,7 @@ namespace fileserver
 
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::map(Si::open_read_write(root / name), [](Si::file_handle file) -> read_write_file
+			return Si::map(ventura::open_read_write((root / ventura::relative_path(name)).safe_c_str()), [](Si::file_handle file) -> read_write_file
 			{
 				auto shared_file = Si::to_shared(std::move(file));
 				return read_write_file
@@ -239,7 +249,7 @@ namespace fileserver
 
 	private:
 
-		boost::filesystem::path root;
+		ventura::absolute_path root;
 	};
 
 	Si::unique_observable<boost::system::error_code>

@@ -70,7 +70,7 @@ namespace fileserver
 	}
 
 	template <class CharSource>
-	inline Si::fast_variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> deserialize_json(CharSource &&serialized)
+	inline Si::variant<std::unique_ptr<fileserver::directory_listing>, std::size_t> deserialize_json(CharSource &&serialized)
 	{
 		rapidjson::Document document;
 		{
