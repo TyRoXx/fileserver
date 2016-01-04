@@ -12,8 +12,6 @@ addons:
     sources:
     - boost-latest
     - ubuntu-toolchain-r-test
-    - liburiparser-dev
-    - libfuse-dev
     packages:
     - g++-5
     - g++-4.9
@@ -21,6 +19,8 @@ addons:
     - g++-4.7
     - g++-4.6
     - libboost1.55-all-dev
+    - liburiparser-dev
+    - libfuse-dev
     
 env:
  - CPP=g++-5   BUILD_TYPE=Release
