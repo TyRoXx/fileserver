@@ -31,10 +31,6 @@ env:
  - CPP=g++-4.9 BUILD_TYPE=Debug
  - CPP=g++-4.8 BUILD_TYPE=Release
  - CPP=g++-4.8 BUILD_TYPE=Debug
- - CPP=g++-4.7 BUILD_TYPE=Debug
- - CPP=g++-4.7 BUILD_TYPE=Release
- - CPP=g++-4.6 BUILD_TYPE=Debug
- - CPP=g++-4.6 BUILD_TYPE=Release
 
 before_install:
  - git submodule update --init --recursive
