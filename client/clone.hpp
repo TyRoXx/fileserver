@@ -3,6 +3,7 @@
 
 #include "storage_reader/storage_reader.hpp"
 #include <server/digest.hpp>
+#include <server/path.hpp>
 #include <silicium/error_or.hpp>
 #include <silicium/file_handle.hpp>
 #include <silicium/observable/ptr.hpp>
@@ -209,7 +210,7 @@ namespace fileserver
 
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::map(ventura::open_read_write((root / ventura::relative_path(name)).safe_c_str()),
+			return Si::map(ventura::open_read_write(safe_c_str(to_native_range(root / ventura::relative_path(name)))),
 			               [](Si::file_handle file) -> read_write_file
 			               {
 				               auto shared_file = Si::to_shared(std::move(file));

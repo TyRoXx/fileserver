@@ -252,7 +252,8 @@ namespace fileserver
 					            {
 						            std::vector<char> content;
 						            Si::file_handle file =
-						                ventura::open_read_write(location.where.safe_c_str()).move_value();
+						                ventura::open_read_write(safe_c_str(to_native_range(location.where)))
+						                    .move_value();
 						            boost::uint64_t size =
 						                ventura::file_size(file.handle)
 						                    .get()
