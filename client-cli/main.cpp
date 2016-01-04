@@ -182,6 +182,7 @@ int main(int argc, char **argv)
 	}
 	else if (verb == "mount")
 	{
+#ifdef __linux__
 		auto requested = parse_digest();
 		if (!requested)
 		{
@@ -193,6 +194,10 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		fileserver::mount_directory(*requested, *mount_point, server);
+#else
+		std::cerr << "Only available on Linux\n";
+		return 1;
+#endif
 	}
 	else if (verb == "clone")
 	{

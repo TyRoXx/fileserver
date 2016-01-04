@@ -372,10 +372,10 @@ namespace fileserver
 #endif
 	}
 
+#ifdef __linux__
 	void mount_directory(unknown_digest const &root_digest, fileserver::path const &mount_point,
 	                     boost::asio::ip::tcp::endpoint const &server)
 	{
-#ifdef __linux__
 		chan_deleter deleter;
 		deleter.mount_point = mount_point;
 
@@ -411,6 +411,6 @@ namespace fileserver
 		chan.release();
 
 		fuse_loop(f.get());
-#endif
 	}
+#endif
 }

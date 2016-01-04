@@ -7,8 +7,10 @@
 
 namespace fileserver
 {
+#ifdef __linux__
 	void mount_directory(fileserver::unknown_digest const &root_digest, fileserver::path const &mount_point,
 	                     boost::asio::ip::tcp::endpoint const &server);
+#endif
 }
 
 #endif
