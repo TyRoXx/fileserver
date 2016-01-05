@@ -104,25 +104,6 @@ namespace fileserver
 		return boost::system::error_code();
 	}
 
-	inline boost::system::error_code seek_absolute(Si::native_file_descriptor file, boost::uint64_t destination)
-	{
-#ifdef _WIN32
-		LARGE_INTEGER destinationConverted;
-		destinationConverted.QuadPart = destination;
-		if (!SetFilePointerEx(file, destinationConverted, nullptr, SEEK_SET))
-		{
-			return boost::system::error_code(GetLastError(), boost::system::native_ecat);
-		}
-#else
-		auto position = lseek(file, destination, SEEK_SET);
-		if (static_cast<boost::uint64_t>(position) != destination)
-		{
-			return boost::system::error_code(errno, boost::system::posix_category);
-		}
-#endif
-		return boost::system::error_code();
-	}
-
 	struct filesystem_writeable_file : writeable_file
 	{
 		explicit filesystem_writeable_file(std::shared_ptr<Si::file_handle> file)
@@ -132,7 +113,7 @@ namespace fileserver
 
 		virtual boost::system::error_code seek(file_offset destination) SILICIUM_OVERRIDE
 		{
-			return seek_absolute(file->handle, destination);
+			return ventura::seek_absolute(file->handle, destination);
 		}
 
 		virtual boost::system::error_code write(Si::memory_range const &written) SILICIUM_OVERRIDE
@@ -156,7 +137,7 @@ namespace fileserver
 		virtual Si::error_or<std::unique_ptr<Si::source<Si::error_or<Si::memory_range>>>>
 		read(file_offset begin) SILICIUM_OVERRIDE
 		{
-			boost::system::error_code ec = seek_absolute(file->handle, begin);
+			boost::system::error_code ec = ventura::seek_absolute(file->handle, begin);
 			if (ec)
 			{
 				return ec;

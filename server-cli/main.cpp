@@ -239,62 +239,41 @@ namespace fileserver
 		{
 		case request_type::get:
 		{
-			Si::visit<void>(
-			    *request,
-			    [&try_send, &found_file, &yield](get_request const &)
-			    {
-				    auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>(
-				        [&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
-				        {
-					        yield(Si::visit<std::vector<char>>(
-					            found_file,
-					            [](file_system_location const &location)
-					            {
-						            std::vector<char> content;
-						            Si::file_handle file =
-						                ventura::open_read_write(safe_c_str(to_native_range(location.where)))
-						                    .move_value();
-						            boost::uint64_t size =
-						                ventura::file_size(file.handle)
-						                    .get()
-						                    .or_throw([&location]
-						                              {
-							                              throw std::runtime_error("Expected file " +
-							                                                       to_utf8_string(location.where) +
-							                                                       " to have a size");
-							                          });
-						            content.resize(size);
-						            if (Si::read(file.handle, Si::make_memory_range(content)).get() != size)
-						            {
-							            throw std::runtime_error(
-							                boost::str(boost::format("Could not read %1% bytes from file %2%") % size %
-							                           location.where));
-						            }
-						            return content;
-						        },
-					            [](in_memory_location const &location)
-					            {
-						            return location.content;
-						        }));
-					        return {};
-					    });
-				    Si::optional<std::vector<char>> const &body = yield.get_one(Si::ref(reading));
-				    if (!body)
-				    {
-					    return;
-				    }
+			Si::visit<void>(*request,
+			                [&try_send, &found_file, &yield](get_request const &)
+			                {
+				                auto reading = Si::make_thread_generator<std::vector<char>, Si::std_threading>(
+				                    [&](Si::push_context<std::vector<char>> &yield) -> Si::nothing
+				                    {
+					                    yield(Si::visit<std::vector<char>>(found_file,
+					                                                       [](file_system_location const &location)
+					                                                       {
+						                                                       return ventura::read_file(location.where)
+						                                                           .get();
+						                                                   },
+					                                                       [](in_memory_location const &location)
+					                                                       {
+						                                                       return location.content;
+						                                                   }));
+					                    return {};
+					                });
+				                Si::optional<std::vector<char>> const &body = yield.get_one(Si::ref(reading));
+				                if (!body)
+				                {
+					                return;
+				                }
 
-				    if (body->size() != location_file_size(found_file))
-				    {
-					    return;
-				    }
+				                if (body->size() != location_file_size(found_file))
+				                {
+					                return;
+				                }
 
-				    try_send(*body);
-				},
-			    [](browse_request const &)
-			    {
-				    // TODO
-				});
+				                try_send(*body);
+				            },
+			                [](browse_request const &)
+			                {
+				                // TODO
+				            });
 			break;
 		}
 
