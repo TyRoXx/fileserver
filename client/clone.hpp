@@ -191,13 +191,14 @@ namespace fileserver
 
 		virtual Si::error_or<read_write_file> read_write_regular_file(std::string const &name) SILICIUM_OVERRIDE
 		{
-			return Si::map(ventura::open_read_write(safe_c_str(to_native_range(root / ventura::relative_path(name)))),
-			               [](Si::file_handle file) -> read_write_file
-			               {
-				               auto shared_file = Si::to_shared(std::move(file));
-				               return read_write_file{Si::make_unique<filesystem_readable_file>(shared_file),
-				                                      Si::make_unique<filesystem_writeable_file>(shared_file)};
-				           });
+			return Si::map(
+			    ventura::open_read_write(ventura::safe_c_str(to_native_range(root / ventura::relative_path(name)))),
+			    [](Si::file_handle file) -> read_write_file
+			    {
+				    auto shared_file = Si::to_shared(std::move(file));
+				    return read_write_file{Si::make_unique<filesystem_readable_file>(shared_file),
+				                           Si::make_unique<filesystem_writeable_file>(shared_file)};
+				});
 		}
 
 	private:

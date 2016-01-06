@@ -19,7 +19,7 @@ namespace fileserver
 	{
 		inline Si::error_or<std::pair<typed_reference, location>> hash_file(ventura::absolute_path const &file)
 		{
-			Si::error_or<Si::file_handle> opening = ventura::open_reading(safe_c_str(to_native_range(file)));
+			Si::error_or<Si::file_handle> opening = ventura::open_reading(ventura::safe_c_str(to_native_range(file)));
 			if (opening.is_error())
 			{
 				return opening.error();
