@@ -14,6 +14,8 @@ if(UNIX)
 	endif()
 	add_definitions("-Wall -Wextra -Wconversion -Wvla")
 	add_definitions("-Wno-missing-field-initializers")
+	add_definitions("-fstrict-overflow -Wstrict-overflow=5")
+	add_definitions("-fvisibility=hidden")
 
 	option(FILESERVER_PEDANTIC "pass -pedantic to the compiler (may generate useless warnings)" ON)
 	if(FILESERVER_PEDANTIC)
