@@ -1,0 +1,10 @@
+[requires]
+Boost/1.60.0@lasote/stable
+OpenSSL/1.0.2e@lasote/stable
+
+[generators]
+cmake
+
+[imports]
+bin, *.dll -> ./bin
+lib, *.dylib* -> ./bin

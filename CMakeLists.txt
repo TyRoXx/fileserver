@@ -37,18 +37,27 @@ if(MSVC)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SAFESEH:NO")
 endif()
 
-if(MSVC)
-	set(Boost_USE_STATIC_LIBS ON) 
+if(EXISTS ${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+	include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+	conan_basic_setup()
+else()
+	if(MSVC)
+		set(Boost_USE_STATIC_LIBS ON) 
+	endif()
+	if(NOT MSVC)
+		set(SILICIUM_BOOST_REQUIRED REQUIRED)
+	endif()
+	find_package(Boost ${SILICIUM_BOOST_REQUIRED} COMPONENTS unit_test_framework thread filesystem iostreams system coroutine context date_time chrono regex program_options)
+	if(UNIX)
+		add_definitions("-DBOOST_TEST_DYN_LINK")
+	endif()
+	include_directories(SYSTEM ${Boost_INCLUDE_DIR})
+	link_directories(${Boost_LIBRARY_DIR})
+
+
+	find_package(OpenSSL REQUIRED)
+	include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 endif()
-if(NOT MSVC)
-	set(SILICIUM_BOOST_REQUIRED REQUIRED)
-endif()
-find_package(Boost ${SILICIUM_BOOST_REQUIRED} COMPONENTS unit_test_framework thread filesystem iostreams system coroutine context date_time chrono regex program_options)
-if(UNIX)
-	add_definitions("-DBOOST_TEST_DYN_LINK")
-endif()
-include_directories(SYSTEM ${Boost_INCLUDE_DIR})
-link_directories(${Boost_LIBRARY_DIR})
 
 if(WIN32)
 	#Boost.Asio wants this for no reason
@@ -56,10 +65,7 @@ if(WIN32)
 
 	add_definitions("-DBOOST_ASIO_HAS_IOCP")
 endif()
-
-find_package(OpenSSL REQUIRED)
-include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
-
+	
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
 set(SILICIUM_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/silicium" CACHE PATH "")
